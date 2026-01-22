@@ -1,0 +1,39 @@
+import 'package:dartz/dartz.dart';
+import '../../../../core/error/failures.dart';
+import '../entities/ticket.dart';
+import '../entities/comment.dart';
+
+abstract class TicketRepository {
+  Stream<List<Ticket>> getTickets({String? statusFilter});
+  Future<Either<Failure, Unit>> createTicket(Ticket ticket);
+  Future<Either<Failure, Unit>> updateTicketStatus(
+    String ticketId,
+    String status,
+  );
+  Future<Either<Failure, Unit>> updateTicket(Ticket ticket);
+  Future<Either<Failure, Unit>> assignTicket(
+    String ticketId,
+    String agentId, {
+    required String assignedBy,
+    String? note,
+  });
+  Future<Either<Failure, Unit>> resolveAndBillTicket(
+    String ticketId,
+    double amount,
+  );
+  Stream<Map<String, int>> getTicketStats();
+  Future<List<Map<String, dynamic>>> getAgents();
+  Future<Map<String, dynamic>?> getAgent(String agentId);
+
+  // Customers
+  Future<Map<String, dynamic>?> getCustomer(String customerId);
+
+  // Comments
+  Stream<List<TicketComment>> getComments(String ticketId);
+  Future<Either<Failure, Unit>> addComment({
+    required String ticketId,
+    required String author,
+    required String body,
+    required bool isInternal,
+  });
+}

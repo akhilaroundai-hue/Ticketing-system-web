@@ -1,0 +1,1762 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+import 'package:timeago/timeago.dart' as timeago;
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../../core/design_system/design_system.dart';
+import '../../../customers/domain/entities/customer.dart';
+import '../../../customers/presentation/widgets/customer_info_card.dart';
+import '../../../customers/presentation/providers/customer_activities_provider.dart';
+import '../../../customers/presentation/providers/customer_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../dashboard/presentation/providers/app_settings_provider.dart';
+
+import '../providers/ticket_provider.dart';
+import '../widgets/comments_section.dart';
+import '../widgets/ticket_remarks_section.dart';
+import '../widgets/resolve_bill_dialog.dart';
+import 'edit_ticket_page.dart';
+
+class TicketDetailPage extends ConsumerStatefulWidget {
+  final String ticketId;
+  const TicketDetailPage({super.key, required this.ticketId});
+
+  @override
+  ConsumerState<TicketDetailPage> createState() => _TicketDetailPageState();
+}
+
+class _AgentLoadDot extends StatelessWidget {
+  final Color color;
+
+  const _AgentLoadDot({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.3),
+            blurRadius: 6,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Color _agentLoadColor(int count) {
+  if (count == 0) return AppColors.success;
+  if (count == 1) return AppColors.warning;
+  return AppColors.error;
+}
+
+String _agentLoadLabel(int count) {
+  if (count == 0) return 'Free';
+  if (count == 1) return 'Handling 1 ticket';
+  return 'Handling $count tickets';
+}
+
+class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
+  Future<void> _updateStatus(String newStatus) async {
+    final error = await ref
+        .read(ticketStatusUpdaterProvider.notifier)
+        .updateStatus(widget.ticketId, newStatus);
+
+    if (!mounted) return;
+
+    final success = error == null;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? 'Status updated to $newStatus'
+              : 'Failed to update status: $error',
+        ),
+        backgroundColor: success ? AppColors.success : AppColors.error,
+      ),
+    );
+  }
+
+  Future<void> _openScreenshot(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid screenshot URL'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to open screenshot'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showAssignDialog() async {
+    final agentsAsync = ref.read(agentsListProvider);
+    final currentUser = ref.read(authProvider);
+    final isAdmin = currentUser?.isAdmin == true;
+    final ticketsSnapshot = ref.read(ticketsStreamProvider);
+    final Map<String, int> agentLoadCounts = {};
+    const completedStatuses = {'Resolved', 'Closed', 'BillProcessed'};
+
+    ticketsSnapshot.when(
+      data: (tickets) {
+        for (final ticket in tickets) {
+          final assignee = ticket.assignedTo;
+          if (assignee == null || assignee.isEmpty) continue;
+          if (completedStatuses.contains(ticket.status)) continue;
+          agentLoadCounts[assignee] = (agentLoadCounts[assignee] ?? 0) + 1;
+        }
+      },
+      loading: () {},
+      error: (_, __) {},
+    );
+
+    agentsAsync.when(
+      data: (agents) {
+        final visibleAgents = agents.where((a) {
+          final role = (a['role'] as String?)?.toLowerCase();
+          if (role == null) return false;
+          if (role == 'support') return true;
+          if (role == 'support head') return true;
+          if (isAdmin && role == 'accountant') return true;
+          return false;
+        }).toList();
+
+        showDialog(
+          context: context,
+          builder: (dialogContext) {
+            return Dialog(
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Assign Ticket',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.slate900,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Choose an agent to hand off this ticket',
+                                  style: TextStyle(
+                                    color: AppColors.slate500,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Close',
+                            icon: const Icon(LucideIcons.x),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      if (visibleAgents.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.slate50,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.slate200),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                LucideIcons.info,
+                                color: AppColors.slate500,
+                              ),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'No eligible agents found',
+                                  style: TextStyle(
+                                    color: AppColors.slate600,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 400),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: visibleAgents.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final agent = visibleAgents[index];
+                              final agentId = agent['id'] as String?;
+                              final loadCount =
+                                  agentId == null ? 0 : (agentLoadCounts[agentId] ?? 0);
+                              final loadColor = _agentLoadColor(loadCount);
+                              final loadLabel = _agentLoadLabel(loadCount);
+                              final displayName =
+                                  agent['full_name'] ?? agent['username'] ?? 'Agent';
+                              final roleLabel =
+                                  (agent['role'] as String? ?? '').toUpperCase();
+
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () async {
+                                  Navigator.of(dialogContext).pop();
+                                  final success = await ref
+                                      .read(ticketAssignerProvider.notifier)
+                                      .assignTicket(widget.ticketId, agent['id']);
+
+                                  if (!mounted) return;
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        success
+                                            ? 'Assigned to $displayName'
+                                            : 'Failed to assign',
+                                      ),
+                                      backgroundColor: success
+                                          ? AppColors.success
+                                          : AppColors.error,
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: AppColors.slate200),
+                                    color: Colors.white,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      _AgentLoadDot(color: loadColor),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              displayName,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                                color: AppColors.slate900,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '$roleLabel • $loadLabel',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: AppColors.slate500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Icon(
+                                        LucideIcons.arrowRight,
+                                        size: 18,
+                                        color: AppColors.slate400,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+      loading: () {},
+      error: (_, __) {},
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = ref.watch(authProvider);
+    final isAdmin = currentUser?.isAdmin == true;
+    final canManageAssignment = isAdmin ||
+        currentUser?.isSupportHead == true ||
+        currentUser?.isAgent == true;
+    final ticketsAsync = ref.watch(ticketsStreamProvider);
+    final appSettings = ref
+        .watch(appSettingsProvider)
+        .maybeWhen(data: (value) => value, orElse: () => null);
+    final enableSupportHeadForceResolve = appSettings == null
+        ? true
+        : (appSettings['enable_support_head_force_resolve'] ?? true);
+    final advancedSettings = ref
+        .watch(advancedSettingsProvider)
+        .maybeWhen(data: (value) => value, orElse: () => null);
+
+    return MainLayout(
+      currentPath: '/ticket/${widget.ticketId}',
+      child: Scaffold(
+        backgroundColor: AppColors.slate50,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: false,
+          titleSpacing: 24,
+          toolbarHeight: 72,
+          title: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Ticket Details',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.slate900,
+                ),
+              ),
+              SizedBox(height: 2),
+              Text(
+                'Conversation & history',
+                style: TextStyle(fontSize: 12, color: AppColors.slate500),
+              ),
+            ],
+          ),
+          actions: [
+            if (canManageAssignment)
+              IconButton(
+                icon: const Icon(LucideIcons.userPlus, size: 20),
+                tooltip: 'Assign Support Head',
+                onPressed: _showAssignDialog,
+              ),
+            if (isAdmin || currentUser?.isSupportHead == true)
+              PopupMenuButton<String>(
+                icon: const Icon(LucideIcons.moreVertical, size: 20),
+                tooltip: 'Change Status',
+                onSelected: _updateStatus,
+                itemBuilder: (context) {
+                  const allStatuses = [
+                    'New',
+                    'Open',
+                    'In Progress',
+                    'On Hold',
+                    'Waiting for Customer',
+                    'Resolved',
+                    'Closed',
+                  ];
+
+                  final visibleStatuses =
+                      advancedSettings?.visibleStatuses ?? allStatuses;
+
+                  final options = allStatuses
+                      .where((status) => visibleStatuses.contains(status))
+                      .toList();
+
+                  return options
+                      .map(
+                        (status) =>
+                            PopupMenuItem(value: status, child: Text(status)),
+                      )
+                      .toList();
+                },
+              ),
+          ],
+        ),
+        body: ticketsAsync.when(
+          data: (tickets) {
+            final ticket = tickets.firstWhere(
+              (t) => t.ticketId == widget.ticketId,
+              orElse: () => tickets.first,
+            );
+            final agentsAsync = ref.watch(agentsListProvider);
+            final customerAsync = ref.watch(
+              customerProvider(ticket.customerId),
+            );
+            final customerCompanyName = customerAsync.maybeWhen(
+              data: (customer) {
+                if (customer == null) return null;
+                final trimmed = customer.companyName.trim();
+                return trimmed.isEmpty ? null : trimmed;
+              },
+              orElse: () => null,
+            );
+
+            final activitiesAsync = ref.watch(
+              customerActivitiesProvider(ticket.customerId),
+            );
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Ticket Header Card
+                  AppCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      ticket.title,
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.slate900,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(LucideIcons.edit2, size: 20),
+                                    onPressed: () async {
+                                      final success = await Navigator.push<bool>(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              EditTicketPage(ticket: ticket),
+                                        ),
+                                      );
+
+                                      if (!mounted) return;
+                                      if (success == true) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Ticket updated successfully',
+                                            ),
+                                            backgroundColor: AppColors.success,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    tooltip: 'Edit Ticket',
+                                    color: AppColors.slate600,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _buildStatusBadge(ticket.status),
+                                  if ([
+                                    'BillRaised',
+                                    'BillProcessed',
+                                    'Resolved',
+                                    'Closed',
+                                  ].contains(ticket.status)) ...[
+                                    const SizedBox(width: 12),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.slate100,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: AppColors.slate200),
+                                      ),
+                                      child: Text(
+                                        'Bill Amount: ₹${ticket.billAmount ?? 0}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.slate700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              if ((ticket.screenshotUrl ?? '').isNotEmpty)
+                                _buildScreenshotSection(ticket.screenshotUrl!),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Icon(
+                                    LucideIcons.user,
+                                    size: 16,
+                                    color: AppColors.slate500,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  agentsAsync.when(
+                                    data: (agents) {
+                                      final idToName = <String, String>{};
+                                      final usernameToName = <String, String>{};
+                                      for (final a in agents) {
+                                        final id = a['id'] as String?;
+                                        final username = a['username'] as String?;
+                                        final name =
+                                            (a['full_name'] ?? a['username'] ?? id)
+                                                as String?;
+                                        if (id != null && name != null) {
+                                          idToName[id] = name;
+                                        }
+                                        if (username != null && name != null) {
+                                          usernameToName[username] = name;
+                                        }
+                                      }
+
+                                      final isSupportHeadCreator =
+                                          idToName.containsKey(ticket.createdBy) ||
+                                          usernameToName.containsKey(
+                                            ticket.createdBy,
+                                          );
+
+                                      if (isSupportHeadCreator) {
+                                        final createdByDisplay =
+                                            idToName[ticket.createdBy] ??
+                                            usernameToName[ticket.createdBy] ??
+                                            ticket.createdBy;
+                                        return Text(
+                                          createdByDisplay,
+                                          style: TextStyle(color: AppColors.slate600),
+                                        );
+                                      }
+
+                                      // If not an agent, show Company Name
+                                      return Text(
+                                        customerCompanyName ?? ticket.createdBy,
+                                        style: const TextStyle(
+                                          color: AppColors.slate900,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      );
+                                    },
+                                    loading: () => Text(
+                                      ticket.createdBy,
+                                      style: TextStyle(color: AppColors.slate600),
+                                    ),
+                                    error: (_, __) => Text(
+                                      ticket.createdBy,
+                                      style: TextStyle(color: AppColors.slate600),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 24),
+                                  Icon(
+                                    LucideIcons.clock,
+                                    size: 16,
+                                    color: AppColors.slate500,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    ticket.createdAt != null
+                                        ? timeago.format(ticket.createdAt!)
+                                        : 'Unknown',
+                                    style: TextStyle(color: AppColors.slate600),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              agentsAsync.when(
+                                data: (agents) {
+                                  final idToName = <String, String>{};
+                                  for (final a in agents) {
+                                    final id = a['id'] as String?;
+                                    if (id == null) continue;
+                                    idToName[id] =
+                                        (a['full_name'] ?? a['username'] ?? id)
+                                            as String;
+                                  }
+
+                                  final assigneeName =
+                                      (ticket.assignedTo == null ||
+                                          ticket.assignedTo!.isEmpty)
+                                      ? 'Unassigned'
+                                      : (idToName[ticket.assignedTo!] ??
+                                            ticket.assignedTo!);
+
+                                  return Row(
+                                    children: [
+                                      Icon(
+                                        LucideIcons.userCheck,
+                                        size: 16,
+                                        color: AppColors.slate500,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Assigned to: $assigneeName',
+                                          style: TextStyle(color: AppColors.slate600),
+                                        ),
+                                      ),
+                                      if (canManageAssignment)
+                                        TextButton.icon(
+                                          onPressed: _showAssignDialog,
+                                          icon: const Icon(
+                                            LucideIcons.refreshCw,
+                                            size: 16,
+                                          ),
+                                          label: Text(
+                                            assigneeName == 'Unassigned'
+                                                ? 'Assign'
+                                                : 'Change',
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                },
+                                loading: () => const SizedBox.shrink(),
+                                error: (_, __) => const SizedBox.shrink(),
+                              ),
+                              const SizedBox(height: 16),
+                              const Divider(),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Description',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16,
+                                  color: AppColors.slate900,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              if ((ticket.description ?? '').trim().isEmpty)
+                                const Text(
+                                  'No description provided',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    height: 1.5,
+                                    color: AppColors.slate700,
+                                  ),
+                                )
+                              else
+                                MarkdownBody(
+                                  data: ticket.description!,
+                                  styleSheet:
+                                      MarkdownStyleSheet.fromTheme(
+                                        Theme.of(context),
+                                      ).copyWith(
+                                        p: const TextStyle(
+                                          fontSize: 15,
+                                          height: 1.5,
+                                          color: AppColors.slate700,
+                                        ),
+                                      ),
+                                ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  _buildInfoChip(
+                                    icon: LucideIcons.flag,
+                                    label: 'Priority',
+                                    value: ticket.priority ?? 'Unassigned',
+                                    color: _getPriorityColor(ticket.priority),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  if (ticket.category != null)
+                                    _buildInfoChip(
+                                      icon: LucideIcons.tag,
+                                      label: 'Category',
+                                      value: ticket.category!,
+                                      color: AppColors.info,
+                                    ),
+                                  const SizedBox(width: 12),
+                                  if (advancedSettings != null)
+                                    _buildInfoChip(
+                                      icon: LucideIcons.clock,
+                                      label: 'Response time target',
+                                      value: _formatResponseTimeTarget(
+                                        advancedSettings.slaMinutesForPriority(
+                                          ticket.priority,
+                                        ),
+                                      ),
+                                      color: AppColors.slate600,
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  if ((ticket.assignedTo == null ||
+                          ticket.assignedTo!.isEmpty) &&
+                      (currentUser?.isSupport == true ||
+                          currentUser?.isSupportHead == true ||
+                          currentUser?.isAgent == true))
+                    AppButton(
+                      label: 'Claim Ticket',
+                      icon: LucideIcons.userCheck,
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final currentUser = ref.read(authProvider);
+                        if (currentUser == null) return;
+
+                        final success = await ref
+                            .read(ticketAssignerProvider.notifier)
+                            .assignTicket(ticket.ticketId, currentUser.id);
+
+                        if (!mounted) return;
+
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success
+                                  ? 'Ticket claimed successfully'
+                                  : 'Failed to claim ticket',
+                            ),
+                            backgroundColor: success
+                                ? AppColors.success
+                                : AppColors.error,
+                          ),
+                        );
+                      },
+                    ),
+                  if (ticket.assignedTo == currentUser?.id &&
+                      ![
+                        'BillRaised',
+                        'BillProcessed',
+                        'Closed',
+                        'Resolved',
+                      ].contains(ticket.status))
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        // Status Transitions
+                        if ([
+                          'New',
+                          'Open',
+                          'Waiting for Customer',
+                        ].contains(ticket.status))
+                          AppButton.secondary(
+                            label: 'Start Work',
+                            icon: LucideIcons.playCircle,
+                            onPressed: () => _updateStatus('In Progress'),
+                          ),
+                        if (ticket.status == 'In Progress')
+                          AppButton.secondary(
+                            label: 'Put On Hold',
+                            icon: LucideIcons.pauseCircle,
+                            onPressed: () => _updateStatus('On Hold'),
+                          ),
+                        if (ticket.status == 'On Hold')
+                          AppButton.secondary(
+                            label: 'Resume Work',
+                            icon: LucideIcons.playCircle,
+                            onPressed: () => _updateStatus('In Progress'),
+                          ),
+
+                        // Resolve Actions
+                        AppButton.secondary(
+                          label: 'Resolve',
+                          icon: LucideIcons.check,
+                          onPressed: () => _updateStatus('Resolved'),
+                        ),
+                        const SizedBox(width: 12),
+                        AppButton(
+                          label: 'Resolve & Raise Bill',
+                          icon: LucideIcons.fileCheck,
+                          onPressed: () async {
+                            final shouldResolve = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => ResolveBillDialog(
+                                ticketId: ticket.ticketId,
+                                onResolve: (ticketId, amount) async {
+                                  return ref
+                                      .read(
+                                        ticketStatusUpdaterProvider.notifier,
+                                      )
+                                      .resolveAndBill(ticketId, amount);
+                                },
+                              ),
+                            );
+
+                            if (!mounted) return;
+                            if (shouldResolve == true) {
+                              // ignore: use_build_context_synchronously
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Ticket resolved and bill raised successfully',
+                                  ),
+                                  backgroundColor: AppColors.success,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  if (ticket.assignedTo == currentUser?.id &&
+                      ['BillRaised', 'BillProcessed', 'Resolved']
+                          .contains(ticket.status))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: AppButton(
+                        label: 'Complete Ticket',
+                        icon: LucideIcons.checkCircle,
+                        onPressed: () => _updateStatus('Closed'),
+                      ),
+                    ),
+
+                  const SizedBox(height: 24),
+
+                  // Charge History
+                  AppCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'In-Charge History',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ref
+                            .watch(
+                              ticketAssignmentHistoryProvider(ticket.ticketId),
+                            )
+                            .when(
+                              data: (events) {
+                                final agentsAsync = ref.watch(
+                                  agentsListProvider,
+                                );
+
+                                return agentsAsync.when(
+                                  data: (agents) {
+                                    final agentNames = <String, String>{};
+                                    final usernameToName = <String, String>{};
+                                    for (final a in agents) {
+                                      final id = a['id'] as String?;
+                                      final username = a['username'] as String?;
+                                      final name =
+                                          (a['full_name'] ??
+                                                  a['username'] ??
+                                                  id)
+                                              as String?;
+                                      if (id == null) continue;
+                                      agentNames[id] = name ?? id;
+                                      if (username != null && name != null) {
+                                        usernameToName[username] = name;
+                                      }
+                                    }
+
+                                    String resolveDisplayName(String value) {
+                                      return agentNames[value] ??
+                                          usernameToName[value] ??
+                                          (value == ticket.createdBy &&
+                                                  customerCompanyName != null
+                                              ? customerCompanyName
+                                              : value);
+                                    }
+
+                                    final currentHandlerName =
+                                        (ticket.assignedTo == null ||
+                                            ticket.assignedTo!.isEmpty)
+                                        ? null
+                                        : resolveDisplayName(
+                                            ticket.assignedTo!,
+                                          );
+
+                                    final headerRows = <Widget>[
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            LucideIcons.user,
+                                            size: 14,
+                                            color: AppColors.slate600,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Ticket raised by: ${resolveDisplayName(ticket.createdBy)}',
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                color: AppColors.slate700,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      ref
+                                          .watch(
+                                            ticketFirstAssignedToProvider(
+                                              ticket.ticketId,
+                                            ),
+                                          )
+                                          .when(
+                                            data: (firstAssignedId) {
+                                              if (firstAssignedId == null ||
+                                                  firstAssignedId.isEmpty) {
+                                                return const SizedBox.shrink();
+                                              }
+                                              return Row(
+                                                children: [
+                                                  const Icon(
+                                                    LucideIcons.userCheck,
+                                                    size: 14,
+                                                    color: AppColors.slate600,
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      'First assigned to: ${resolveDisplayName(firstAssignedId)}',
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                        color:
+                                                            AppColors.slate700,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                            loading: () =>
+                                                const SizedBox.shrink(),
+                                            error: (_, __) =>
+                                                const SizedBox.shrink(),
+                                          ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            LucideIcons.userCheck,
+                                            size: 14,
+                                            color: AppColors.slate600,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Handled by now: ${currentHandlerName ?? 'Unassigned'}',
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                color: AppColors.slate700,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ];
+
+                                    if (events.isEmpty) {
+                                      return Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [...headerRows],
+                                      );
+                                    }
+
+                                    final sortedEvents =
+                                        List<Map<String, dynamic>>.from(events);
+                                    sortedEvents.sort((a, b) {
+                                      DateTime? parse(dynamic v) {
+                                        if (v is DateTime) return v;
+                                        if (v is String) {
+                                          return DateTime.tryParse(v);
+                                        }
+                                        return null;
+                                      }
+
+                                      final atA = parse(a['assigned_at']);
+                                      final atB = parse(b['assigned_at']);
+                                      if (atA == null && atB == null) return 0;
+                                      if (atA == null) return -1;
+                                      if (atB == null) return 1;
+                                      return atA.compareTo(atB);
+                                    });
+
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        ...headerRows,
+                                        const SizedBox(height: 12),
+                                        ...sortedEvents.map((e) {
+                                          DateTime? parse(dynamic v) {
+                                            if (v is DateTime) return v;
+                                            if (v is String) {
+                                              return DateTime.tryParse(v);
+                                            }
+                                            return null;
+                                          }
+
+                                          final fromId = e['from'] as String?;
+                                          final toId = e['to'] as String?;
+                                          final assignedById =
+                                              e['assigned_by'] as String?;
+                                          final note = e['note'] as String?;
+
+                                          final completed =
+                                              (e['completed'] as bool?) == true;
+                                          final assignedAt = parse(
+                                            e['assigned_at'],
+                                          );
+                                          final completedAt = parse(
+                                            e['completed_at'],
+                                          );
+
+                                          final fromName =
+                                              (fromId == null || fromId.isEmpty)
+                                              ? null
+                                              : resolveDisplayName(fromId);
+                                          final toName = toId == null
+                                              ? 'Unknown'
+                                              : resolveDisplayName(toId);
+                                          final assignedByName =
+                                              assignedById == null
+                                              ? 'Unknown'
+                                              : resolveDisplayName(
+                                                  assignedById,
+                                                );
+
+                                          final timeLabel = completed
+                                              ? (completedAt == null
+                                                    ? null
+                                                    : 'Completed ${timeago.format(completedAt)}')
+                                              : (assignedAt == null
+                                                    ? null
+                                                    : timeago.format(
+                                                        assignedAt,
+                                                      ));
+
+                                          return Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 8,
+                                            ),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 10,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.slate50,
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                border: Border.all(
+                                                  color: AppColors.slate200,
+                                                ),
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      const Icon(
+                                                        LucideIcons.arrowRight,
+                                                        size: 16,
+                                                        color:
+                                                            AppColors.slate600,
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(
+                                                        child: Text(
+                                                          fromName == null
+                                                              ? 'Assigned to $toName'
+                                                              : '$fromName → $toName',
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 13,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                color: AppColors
+                                                                    .slate900,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                      if (completed)
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 4,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color: AppColors
+                                                                .success
+                                                                .withValues(
+                                                                  alpha: 0.12,
+                                                                ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
+                                                          ),
+                                                          child: const Text(
+                                                            'Completed',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              color: AppColors
+                                                                  .success,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                            ),
+                                                          ),
+                                                        )
+                                                      else
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 4,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color: AppColors
+                                                                .info
+                                                                .withValues(
+                                                                  alpha: 0.10,
+                                                                ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
+                                                          ),
+                                                          child: const Text(
+                                                            'In progress',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              color: AppColors
+                                                                  .info,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Text(
+                                                    'Assigned by: $assignedByName',
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: AppColors.slate700,
+                                                    ),
+                                                  ),
+                                                  if (note != null &&
+                                                      note.trim().isNotEmpty)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            top: 4,
+                                                          ),
+                                                      child: Text(
+                                                        'Note: ${note.trim()}',
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: AppColors
+                                                              .slate700,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  if (timeLabel != null)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            top: 4,
+                                                          ),
+                                                      child: Text(
+                                                        timeLabel,
+                                                        style: const TextStyle(
+                                                          fontSize: 11,
+                                                          color: AppColors
+                                                              .slate600,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        }),
+                                      ],
+                                    );
+                                  },
+                                  loading: () => const Padding(
+                                    padding: EdgeInsets.all(12),
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  ),
+                                  error: (_, __) => Text(
+                                    'Failed to load agents',
+                                    style: TextStyle(color: AppColors.error),
+                                  ),
+                                );
+                              },
+                              loading: () => const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              ),
+                              error: (err, _) => Text(
+                                'Failed to load history: $err',
+                                style: TextStyle(color: AppColors.error),
+                              ),
+                            ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  ref
+                      .watch(ticketCustomerProvider(ticket.customerId))
+                      .when(
+                        data: (customerData) {
+                          if (customerData == null) {
+                            return AppCard(
+                              child: Text(
+                                'Customer information not available',
+                                style: TextStyle(color: AppColors.slate500),
+                              ),
+                            );
+                          }
+                          final customer = Customer.fromJson(customerData);
+
+                          final customerTickets = tickets
+                              .where((t) => t.customerId == ticket.customerId)
+                              .toList();
+                          customerTickets.sort(
+                            (a, b) => (b.createdAt ?? DateTime(0)).compareTo(
+                              a.createdAt ?? DateTime(0),
+                            ),
+                          );
+
+                          final totalTickets = customerTickets.length;
+                          final resolvedTickets = customerTickets
+                              .where(
+                                (t) => [
+                                  'Resolved',
+                                  'Closed',
+                                  'BillProcessed',
+                                ].contains(t.status),
+                              )
+                              .length;
+                          final pendingTickets = totalTickets - resolvedTickets;
+
+                          final pendingBills = customerTickets
+                              .where((t) => t.status == 'BillRaised')
+                              .toList();
+                          final billedTickets = customerTickets
+                              .where(
+                                (t) =>
+                                    t.status == 'BillProcessed' ||
+                                    t.status == 'Closed',
+                              )
+                              .toList();
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CustomerInfoCard(customer: customer),
+                              const SizedBox(height: 16),
+                              if (customerTickets.isNotEmpty)
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildCustomerStatBox(
+                                        'Total Tickets',
+                                        totalTickets.toString(),
+                                        LucideIcons.ticket,
+                                        AppColors.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildCustomerStatBox(
+                                        'Resolved',
+                                        resolvedTickets.toString(),
+                                        LucideIcons.checkCircle,
+                                        AppColors.success,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildCustomerStatBox(
+                                        'Pending',
+                                        pendingTickets.toString(),
+                                        LucideIcons.clock,
+                                        AppColors.warning,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              if (pendingBills.isNotEmpty ||
+                                  billedTickets.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildCustomerStatBox(
+                                        'Pending bills',
+                                        pendingBills.length.toString(),
+                                        LucideIcons.receipt,
+                                        AppColors.warning,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildCustomerStatBox(
+                                        'Billed tickets',
+                                        billedTickets.length.toString(),
+                                        LucideIcons.receipt,
+                                        AppColors.success,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          );
+                        },
+                        loading: () => const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(40),
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                        error: (err, _) => AppCard(
+                          child: Text(
+                            'Error loading customer: $err',
+                            style: TextStyle(color: AppColors.error),
+                          ),
+                        ),
+                      ),
+                  const SizedBox(height: 24),
+
+                  activitiesAsync.when(
+                    data: (activities) {
+                      if (activities.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final recent = activities.take(3).toList();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.slate100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  LucideIcons.activity,
+                                  size: 18,
+                                  color: AppColors.slate700,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Recent account activities',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.slate900,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Column(
+                            children: recent
+                                .map(
+                                  (activity) => Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 4,
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(
+                                          LucideIcons.clock,
+                                          size: 14,
+                                          color: AppColors.info.withValues(
+                                            alpha: 0.10,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                activity.subject,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.slate900,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                '${activity.type} · ${timeago.format(activity.occurredAt)}',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: AppColors.slate600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      );
+                    },
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                  ),
+
+                  // Override Resolve Button (Support Head only, feature-flagged)
+                  if (enableSupportHeadForceResolve &&
+                      currentUser?.isSupportHead == true &&
+                      ticket.status != 'BillRaised' &&
+                      ticket.status != 'BillProcessed')
+                    AppButton(
+                      label: 'Force Resolve & Send to Billing',
+                      icon: LucideIcons.zap,
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+
+                        // Show confirmation dialog
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('Override Resolve'),
+                            content: const Text(
+                              'This will bypass the normal workflow and send the ticket directly to billing. Are you sure?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(dialogContext, false),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () =>
+                                    Navigator.pop(dialogContext, true),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.warning,
+                                ),
+                                child: const Text('Force Resolve'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirmed != true || !mounted) return;
+
+                        final error = await ref
+                            .read(ticketStatusUpdaterProvider.notifier)
+                            .updateStatus(ticket.ticketId, 'BillRaised');
+
+                        if (!mounted) return;
+
+                        final success = error == null;
+
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success
+                                  ? 'Ticket sent to billing'
+                                  : 'Failed to update status: $error',
+                            ),
+                            backgroundColor: success
+                                ? AppColors.success
+                                : AppColors.error,
+                          ),
+                        );
+                      },
+                    ),
+                  const SizedBox(height: 24),
+
+                  // Remarks Section
+                  TicketRemarksSection(
+                    ticketId: ticket.ticketId,
+                    currentStage: ticket.status,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Comments Section
+                  SizedBox(
+                    height: 600,
+                    child: CommentsSection(
+                      ticketId: ticket.ticketId,
+                      currentUserName:
+                          ref.watch(authProvider)?.username ?? 'Unknown',
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, _) => Center(
+            child: Text(
+              'Error: $err',
+              style: TextStyle(color: AppColors.error),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatResponseTimeTarget(int minutes) {
+    if (minutes < 60) return '$minutes min';
+    if (minutes < 1440) {
+      final hours = minutes ~/ 60;
+      final mins = minutes % 60;
+      if (mins == 0) return '${hours}h';
+      return '${hours}h ${mins}m';
+    }
+    final days = minutes ~/ 1440;
+    final remainingMinutes = minutes % 1440;
+    if (remainingMinutes == 0) return '${days}d';
+    final hours = remainingMinutes ~/ 60;
+    if (hours == 0) return '${days}d';
+    return '${days}d ${hours}h';
+  }
+
+  Widget _buildCustomerStatBox(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 16),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.slate600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    StatusVariant variant;
+    if (status.contains('New') || status.contains('Open')) {
+      variant = StatusVariant.info;
+    } else if (status.contains('Progress')) {
+      variant = StatusVariant.warning;
+    } else if (status.contains('Resolved')) {
+      variant = StatusVariant.success;
+    } else {
+      variant = StatusVariant.neutral;
+    }
+    return StatusBadge(label: status, variant: variant);
+  }
+
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(
+            '$label: ',
+            style: TextStyle(fontSize: 12, color: AppColors.slate600),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getPriorityColor(String? priority) {
+    if (priority == null) return AppColors.slate400;
+    switch (priority.toLowerCase()) {
+      case 'urgent':
+        return AppColors.error;
+      case 'high':
+        return AppColors.warning;
+      case 'medium':
+        return AppColors.info;
+      case 'low':
+        return AppColors.success;
+      default:
+        return AppColors.slate400;
+    }
+  }
+
+  Widget _buildScreenshotSection(String url) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Customer Screenshot',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 16,
+            color: AppColors.slate900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxHeight: 320),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.slate200),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              url,
+              fit: BoxFit.contain,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return SizedBox(
+                  height: 220,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      value: progress.expectedTotalBytes != null
+                          ? progress.cumulativeBytesLoaded /
+                                progress.expectedTotalBytes!
+                          : null,
+                    ),
+                  ),
+                );
+              },
+              errorBuilder: (_, __, ___) => Container(
+                alignment: Alignment.center,
+                padding: const EdgeInsets.all(24),
+                child: const Text(
+                  'Unable to load screenshot',
+                  style: TextStyle(color: AppColors.error),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => _openScreenshot(url),
+            icon: const Icon(LucideIcons.externalLink, size: 16),
+            label: const Text('Open full size'),
+          ),
+        ),
+      ],
+    );
+  }
+}
