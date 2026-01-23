@@ -44,7 +44,15 @@ void main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBheXFubnB0cHl1eGliamVwbWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5MTgyNTQsImV4cCI6MjA3OTQ5NDI1NH0.CzlV_ygyckVFc2F2fB8hBSpqeuOq3wHBFSpQdkjPphQ',
   );
 
-  runApp(const ProviderScope(child: TallyCareApp()));
+  final container = ProviderContainer();
+  await container.read(authProvider.notifier).restoreSession();
+
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: const TallyCareApp(),
+    ),
+  );
 }
 
 class TallyCareApp extends ConsumerWidget {
