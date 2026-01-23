@@ -9,6 +9,8 @@ import '../../../customers/presentation/providers/customer_provider.dart';
 import '../../../customers/domain/entities/customer.dart';
 import '../../../tickets/domain/entities/ticket.dart';
 import '../../../../core/design_system/components/status_badge.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../dashboard/presentation/widgets/create_ticket_dialog.dart';
 
 class BillsPage extends ConsumerStatefulWidget {
   const BillsPage({super.key});
@@ -26,6 +28,7 @@ class _BillsPageState extends ConsumerState<BillsPage> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _issueController = TextEditingController();
   String? _markingTicketId;
+  bool _showAnalytics = true;
 
   @override
   void dispose() {
@@ -49,17 +52,27 @@ class _BillsPageState extends ConsumerState<BillsPage> {
 
   Future<void> _markTicketAsBilled(Ticket ticket) async {
     if (_markingTicketId == ticket.ticketId) return;
-    setState(() => _markingTicketId = ticket.ticketId);
     final messenger = ScaffoldMessenger.of(context);
+    final currentUser = ref.read(authProvider);
+    if (currentUser?.isAccountant != true) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Only accountants can mark bills as processed.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _markingTicketId = ticket.ticketId);
     final error = await ref
         .read(ticketStatusUpdaterProvider.notifier)
-        .updateStatus(ticket.ticketId, 'BillProcessed');
+        .updateStatus(ticket.ticketId, 'Closed');
     if (!mounted) return;
     setState(() => _markingTicketId = null);
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          error == null ? 'Marked as billed' : 'Failed to update: $error',
+          error == null ? 'Marked as billed and completed' : 'Failed to update: $error',
         ),
         backgroundColor: error == null ? AppColors.success : AppColors.error,
       ),
@@ -71,174 +84,248 @@ class _BillsPageState extends ConsumerState<BillsPage> {
     final ticketsAsync = ref.watch(ticketsStreamProvider);
     final customersAsync = ref.watch(customersListProvider);
     final agentsAsync = ref.watch(agentsListProvider);
+    final currentUser = ref.watch(authProvider);
+    final isAccountant = currentUser?.isAccountant == true;
 
     return MainLayout(
       currentPath: '/bills',
       child: Container(
         color: AppColors.slate50,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Expanded(
-                  child: SectionHeader(
-                    title: 'Bills',
-                    subtitle: 'Manage raised bills and payments',
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: _clearFilters,
-                  icon: const Icon(LucideIcons.rotateCcw, size: 16),
-                  label: const Text('Reset Filters'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.slate500,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            
-            // Filter Bar
-            _buildFilterBar(),
-            
-            const SizedBox(height: 24),
+        child: ticketsAsync.when(
+          data: (tickets) {
+            return customersAsync.when(
+              data: (customers) {
+                return agentsAsync.when(
+                  data: (agents) {
+                    // Filter logic
+                    final filteredTickets = tickets.where((t) {
+                      final hasBillAmount = (t.billAmount ?? 0) > 0;
+                      final isBillTicket = t.status == 'BillRaised' ||
+                          t.status == 'BillProcessed' ||
+                          (t.status == 'Closed' && hasBillAmount);
+                      if (!isBillTicket) return false;
 
-            ticketsAsync.when(
-              data: (tickets) {
-                return customersAsync.when(
-                  data: (customers) {
-                    return agentsAsync.when(
-                      data: (agents) {
-                        // Filter logic
-                        final filteredTickets = tickets.where((t) {
-                          final hasBillAmount =
-                              (t.billAmount ?? 0) > 0;
-                          final isBillTicket = t.status == 'BillRaised' ||
-                              t.status == 'BillProcessed' ||
-                              (t.status == 'Closed' && hasBillAmount);
-                          if (!isBillTicket) return false;
+                      // Date filter
+                      if (_selectedDate != null) {
+                        final updatedAt = t.updatedAt ?? DateTime(0);
+                        if (updatedAt.year != _selectedDate!.year ||
+                            updatedAt.month != _selectedDate!.month ||
+                            updatedAt.day != _selectedDate!.day) {
+                          return false;
+                        }
+                      }
 
-                          // Date filter
-                          if (_selectedDate != null) {
-                            final updatedAt = t.updatedAt ?? DateTime(0);
-                            if (updatedAt.year != _selectedDate!.year ||
-                                updatedAt.month != _selectedDate!.month ||
-                                updatedAt.day != _selectedDate!.day) {
-                              return false;
-                            }
-                          }
-
-                          // Customer filter
-                          if (_customerQuery.isNotEmpty) {
-                            final customer = customers.firstWhere(
-                              (c) => c.id == t.customerId,
-                              orElse: () => const Customer(
-                                id: '',
-                                companyName: 'Unknown',
-                              ),
-                            );
-                            if (!customer.companyName
-                                .toLowerCase()
-                                .contains(_customerQuery.toLowerCase())) {
-                              return false;
-                            }
-                          }
-
-                          // Issue filter
-                          if (_issueQuery.isNotEmpty) {
-                            if (!t.title
-                                .toLowerCase()
-                                .contains(_issueQuery.toLowerCase())) {
-                              return false;
-                            }
-                          }
-
-                          // Amount filter
-                          if (_amountQuery.isNotEmpty) {
-                            final amount = t.billAmount?.toString() ?? '';
-                            if (!amount.contains(_amountQuery)) {
-                              return false;
-                            }
-                          }
-
-                          return true;
-                        }).toList();
-
-                        // Sort: newest first
-                        filteredTickets.sort(
-                          (a, b) => (b.updatedAt ?? DateTime(0))
-                              .compareTo(a.updatedAt ?? DateTime(0)),
+                      // Customer filter
+                      if (_customerQuery.isNotEmpty) {
+                        final customer = customers.firstWhere(
+                          (c) => c.id == t.customerId,
+                          orElse: () => const Customer(
+                            id: '',
+                            companyName: 'Unknown',
+                          ),
                         );
+                        if (!customer.companyName
+                            .toLowerCase()
+                            .contains(_customerQuery.toLowerCase())) {
+                          return false;
+                        }
+                      }
 
-                        final billedStatuses = {'BillProcessed', 'Closed'};
-                        final billedTotal = filteredTickets
-                            .where((t) => billedStatuses.contains(t.status))
-                            .fold<double>(
-                              0,
-                              (prev, t) => prev + (t.billAmount ?? 0),
-                            );
-                        final pendingTotal = filteredTickets
-                            .where((t) => t.status == 'BillRaised')
-                            .fold<double>(
-                              0,
-                              (prev, t) => prev + (t.billAmount ?? 0),
-                            );
+                      // Issue filter
+                      if (_issueQuery.isNotEmpty) {
+                        if (!t.title
+                            .toLowerCase()
+                            .contains(_issueQuery.toLowerCase())) {
+                          return false;
+                        }
+                      }
 
-                        return Expanded(
-                          child: Column(
+                      // Amount filter
+                      if (_amountQuery.isNotEmpty) {
+                        final amount = t.billAmount?.toString() ?? '';
+                        if (!amount.contains(_amountQuery)) {
+                          return false;
+                        }
+                      }
+
+                      return true;
+                    }).toList();
+
+                    // Sort: newest first
+                    filteredTickets.sort(
+                      (a, b) => (b.updatedAt ?? DateTime(0))
+                          .compareTo(a.updatedAt ?? DateTime(0)),
+                    );
+
+                    final billedStatuses = {'Closed'};
+                    final billedTotal = filteredTickets
+                        .where((t) => billedStatuses.contains(t.status))
+                        .fold<double>(
+                          0,
+                          (prev, t) => prev + (t.billAmount ?? 0),
+                        );
+                    final awaitingBillingTotal = 0.0;
+                    final pendingCompletionTotal = filteredTickets
+                        .where((t) => t.status == 'BillRaised')
+                        .fold<double>(
+                          0,
+                          (prev, t) => prev + (t.billAmount ?? 0),
+                        );
+                    final unbilledTotal =
+                        awaitingBillingTotal + pendingCompletionTotal;
+
+                    return SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isAccountant) ...[
+                            AppCard(
+                              padding: const EdgeInsets.all(20),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Icon(
+                                    LucideIcons.info,
+                                    size: 18,
+                                    color: AppColors.warning,
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Read-only access: only accountants can mark tickets as billed.',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.slate700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildTotalsCard(
-                                billedTotal: billedTotal,
-                                pendingTotal: pendingTotal,
+                              const Expanded(
+                                child: SectionHeader(
+                                  title: 'Bills',
+                                  subtitle: 'Manage raised bills and payments',
+                                ),
                               ),
-                              const SizedBox(height: 24),
-                              Expanded(
-                                child: filteredTickets.isEmpty
-                                    ? const EmptyStateCard(
-                                        icon: LucideIcons.receipt,
-                                        title: 'No bills found',
-                                        subtitle: 'Try adjusting your filters',
-                                      )
-                                    : ListView.separated(
-                                        itemCount: filteredTickets.length,
-                                        separatorBuilder: (context, index) => const SizedBox(height: 12),
-                                        itemBuilder: (context, index) {
-                                          final ticket = filteredTickets[index];
-                                          // Find customer name
-                                          final customer = customers.firstWhere(
-                                            (c) => c.id == ticket.customerId,
-                                            orElse: () => const Customer(id: '', companyName: 'Unknown'),
-                                          );
-                                          // Find agent name
-                                          final agent = agents.firstWhere(
-                                            (a) => a['id'] == ticket.assignedTo,
-                                            orElse: () => <String, dynamic>{'username': 'Unknown'},
-                                          );
-                                          final agentName = agent['full_name'] ?? agent['username'];
-
-                                          return _BillListItem(
-                                            ticket: ticket,
-                                            customerName: customer.companyName,
-                                            agentName: agentName,
-                                            onMarkAsBilled: ticket.status == 'BillRaised'
-                                                ? () => _markTicketAsBilled(ticket)
-                                                : null,
-                                            isProcessing:
-                                                _markingTicketId == ticket.ticketId,
-                                          );
-                                        },
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  if (isAccountant)
+                                    FilledButton.icon(
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => const CreateTicketDialog(),
+                                        );
+                                      },
+                                      icon: const Icon(LucideIcons.plus, size: 16),
+                                      label: const Text('Create Ticket'),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 18,
+                                          vertical: 12,
+                                        ),
                                       ),
+                                    ),
+                                  TextButton.icon(
+                                    onPressed: _clearFilters,
+                                    icon: const Icon(LucideIcons.rotateCcw, size: 16),
+                                    label: const Text('Reset Filters'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: AppColors.slate500,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        );
-                      },
-                      loading: () => const Center(child: CircularProgressIndicator()),
-                      error: (err, _) => Center(child: Text('Error: $err')),
+                          const SizedBox(height: 24),
+                          
+                          // Filter Bar
+                          _buildFilterBar(),
+                          
+                          const SizedBox(height: 24),
+
+                          // Analytics Section with Hide/Show toggle
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Analytics',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.slate900,
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: () => setState(() => _showAnalytics = !_showAnalytics),
+                                icon: Icon(
+                                  _showAnalytics ? LucideIcons.eyeOff : LucideIcons.eye,
+                                  size: 16,
+                                ),
+                                label: Text(_showAnalytics ? 'Hide' : 'Show'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppColors.slate500,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_showAnalytics) ...[
+                            const SizedBox(height: 12),
+                            _buildTotalsCard(
+                              billedTotal: billedTotal,
+                              unbilledTotal: unbilledTotal,
+                              awaitingBillingTotal: awaitingBillingTotal,
+                              pendingCompletionTotal: pendingCompletionTotal,
+                            ),
+                          ],
+                          const SizedBox(height: 24),
+
+                          // Bills List
+                          if (filteredTickets.isEmpty)
+                            const EmptyStateCard(
+                              icon: LucideIcons.receipt,
+                              title: 'No bills found',
+                              subtitle: 'Try adjusting your filters',
+                            )
+                          else
+                            ...filteredTickets.map((ticket) {
+                              final customer = customers.firstWhere(
+                                (c) => c.id == ticket.customerId,
+                                orElse: () => const Customer(id: '', companyName: 'Unknown'),
+                              );
+                              final agent = agents.firstWhere(
+                                (a) => a['id'] == ticket.assignedTo,
+                                orElse: () => <String, dynamic>{'username': 'Unknown'},
+                              );
+                              final agentName = agent['full_name'] ?? agent['username'];
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _BillListItem(
+                                  ticket: ticket,
+                                  customerName: customer.companyName,
+                                  agentName: agentName,
+                                  onMarkAsBilled: ticket.status == 'BillRaised'
+                                      ? () => _markTicketAsBilled(ticket)
+                                      : null,
+                                  isProcessing: _markingTicketId == ticket.ticketId,
+                                  canMarkAsBilled: isAccountant,
+                                ),
+                              );
+                            }),
+                        ],
+                      ),
                     );
                   },
                   loading: () => const Center(child: CircularProgressIndicator()),
@@ -246,9 +333,11 @@ class _BillsPageState extends ConsumerState<BillsPage> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, stack) => Center(child: Text('Error loading bills: $err')),
-            ),
-          ],
+              error: (err, _) => Center(child: Text('Error: $err')),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, stack) => Center(child: Text('Error loading bills: $err')),
         ),
       ),
     );
@@ -403,9 +492,11 @@ class _BillsPageState extends ConsumerState<BillsPage> {
 
   Widget _buildTotalsCard({
     required double billedTotal,
-    required double pendingTotal,
+    required double unbilledTotal,
+    required double awaitingBillingTotal,
+    required double pendingCompletionTotal,
   }) {
-    final grandTotal = billedTotal + pendingTotal;
+    final grandTotal = billedTotal + unbilledTotal;
     return AppCard(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -460,9 +551,25 @@ class _BillsPageState extends ConsumerState<BillsPage> {
               ),
               const SizedBox(width: 12),
               _AmountSummaryTile(
-                label: 'Pending Collection',
-                amount: pendingTotal,
+                label: 'Unbilled Total',
+                amount: unbilledTotal,
                 color: AppColors.warning,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _AmountSummaryTile(
+                label: 'Awaiting Billing (Closed)',
+                amount: awaitingBillingTotal,
+                color: AppColors.info,
+              ),
+              const SizedBox(width: 12),
+              _AmountSummaryTile(
+                label: 'Pending Completion (Bill Raised)',
+                amount: pendingCompletionTotal,
+                color: AppColors.error,
               ),
             ],
           ),
@@ -478,11 +585,13 @@ class _BillListItem extends StatelessWidget {
   final String agentName;
   final VoidCallback? onMarkAsBilled;
   final bool isProcessing;
+  final bool canMarkAsBilled;
 
   const _BillListItem({
     required this.ticket,
     required this.customerName,
     required this.agentName,
+    required this.canMarkAsBilled,
     this.onMarkAsBilled,
     this.isProcessing = false,
   });
@@ -563,7 +672,7 @@ class _BillListItem extends StatelessWidget {
                   color: AppColors.slate500,
                 ),
               ),
-              if (onMarkAsBilled != null) ...[
+              if (onMarkAsBilled != null && canMarkAsBilled) ...[
                 const SizedBox(height: 12),
                 SizedBox(
                   height: 36,
@@ -602,8 +711,9 @@ String _statusLabel(String status) {
     case 'BillRaised':
       return 'Pending';
     case 'BillProcessed':
-    case 'Closed':
       return 'Billed';
+    case 'Closed':
+      return 'Billed & Completed';
     default:
       return status;
   }
@@ -614,8 +724,9 @@ StatusVariant _statusVariant(String status) {
     case 'BillRaised':
       return StatusVariant.warning;
     case 'BillProcessed':
-    case 'Closed':
       return StatusVariant.success;
+    case 'Closed':
+      return StatusVariant.info;
     default:
       return StatusVariant.neutral;
   }

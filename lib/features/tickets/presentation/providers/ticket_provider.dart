@@ -216,6 +216,7 @@ class TicketStatusUpdater extends _$TicketStatusUpdater {
     try {
       if (!ref.mounted) return 'Component not mounted';
       final currentUser = ref.read(authProvider);
+      final canProcessBilling = currentUser?.isAccountant == true;
       final supabase = Supabase.instance.client;
       String? previousStatus;
       try {
@@ -226,6 +227,15 @@ class TicketStatusUpdater extends _$TicketStatusUpdater {
             .single();
         previousStatus = before['status'] as String?;
       } catch (_) {}
+
+      if (status == 'BillProcessed') {
+        if (!canProcessBilling) {
+          return 'Only accountants can mark tickets as billed';
+        }
+        if (previousStatus != 'Closed') {
+          return 'Complete the ticket before billing it';
+        }
+      }
 
       if (!ref.mounted) return 'Component not mounted';
       ref

@@ -741,18 +741,24 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
 
                         if (!mounted) return;
 
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              success
-                                  ? 'Ticket claimed successfully'
-                                  : 'Failed to claim ticket',
+                        if (success) {
+                          ref.invalidate(ticketsStreamProvider);
+                          if (context.mounted) {
+                            // already on detail, just refresh UI
+                            final snackBar = SnackBar(
+                              content: const Text('Ticket claimed successfully'),
+                              backgroundColor: AppColors.success,
+                            );
+                            messenger.showSnackBar(snackBar);
+                          }
+                        } else {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('Failed to claim ticket'),
+                              backgroundColor: AppColors.error,
                             ),
-                            backgroundColor: success
-                                ? AppColors.success
-                                : AppColors.error,
-                          ),
-                        );
+                          );
+                        }
                       },
                     ),
                   if (ticket.assignedTo == currentUser?.id &&
@@ -830,17 +836,6 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                           },
                         ),
                       ],
-                    ),
-                  if (ticket.assignedTo == currentUser?.id &&
-                      ['BillRaised', 'BillProcessed', 'Resolved']
-                          .contains(ticket.status))
-                    Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: AppButton(
-                        label: 'Complete Ticket',
-                        icon: LucideIcons.checkCircle,
-                        onPressed: () => _updateStatus('Closed'),
-                      ),
                     ),
 
                   const SizedBox(height: 24),

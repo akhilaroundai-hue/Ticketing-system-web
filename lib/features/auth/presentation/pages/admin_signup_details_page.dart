@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
-class AdminSignupDetailsPage extends StatefulWidget {
+import '../providers/auth_provider.dart';
+
+class AdminSignupDetailsPage extends ConsumerStatefulWidget {
   final String email;
 
   const AdminSignupDetailsPage({super.key, required this.email});
 
   @override
-  State<AdminSignupDetailsPage> createState() => _AdminSignupDetailsPageState();
+  ConsumerState<AdminSignupDetailsPage> createState() => _AdminSignupDetailsPageState();
 }
 
-class _AdminSignupDetailsPageState extends State<AdminSignupDetailsPage> {
+class _AdminSignupDetailsPageState
+    extends ConsumerState<AdminSignupDetailsPage> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _fullNameController = TextEditingController();
@@ -66,24 +70,37 @@ class _AdminSignupDetailsPageState extends State<AdminSignupDetailsPage> {
       }
 
       final newId = const Uuid().v4();
+      final password = _passwordController.text;
       await supabase.from('agents').insert({
         'id': newId,
         'username': username,
-        'password': _passwordController.text,
+        'password': password,
         'full_name': _fullNameController.text.trim(),
         'role': 'Admin',
         'created_at': DateTime.now().toIso8601String(),
       });
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Admin account created. Please login.'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      final autoLoginSuccess = await ref
+          .read(authProvider.notifier)
+          .login(username, password);
 
-      context.go('/login');
+      if (!mounted) return;
+
+      if (autoLoginSuccess) {
+        // Admins go straight to their dashboard so they never retype credentials.
+        context.go('/admin');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Account created but automatic sign-in failed. Please login manually.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        context.go('/login');
+      }
     } on PostgrestException catch (e) {
       if (!mounted) return;
 

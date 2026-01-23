@@ -8,6 +8,7 @@ import '../../../../core/design_system/layout/main_layout.dart';
 import '../../../../core/design_system/theme/app_colors.dart';
 import '../../../../core/design_system/components/app_button.dart';
 import '../../../../core/design_system/components/app_card.dart';
+import '../widgets/create_ticket_dialog.dart';
 import '../../../tickets/presentation/providers/ticket_provider.dart';
 import '../../../tickets/domain/entities/ticket.dart';
 import '../../../customers/presentation/providers/customer_provider.dart';
@@ -57,18 +58,51 @@ class _AccountantDashboardPageState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Accountant Dashboard',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.slate900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Manage billing and payments',
-                    style: TextStyle(fontSize: 14, color: AppColors.slate500),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Accountant Dashboard',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.slate900,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Manage billing and payments',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppColors.slate500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      FilledButton.icon(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => const CreateTicketDialog(),
+                          );
+                        },
+                        icon: const Icon(LucideIcons.plus, size: 18),
+                        label: const Text('Create Ticket'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 14,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
 

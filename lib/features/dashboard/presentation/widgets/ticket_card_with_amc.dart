@@ -717,99 +717,25 @@ class TicketCardWithAmc extends ConsumerWidget {
                 .read(ticketAssignerProvider.notifier)
                 .assignTicket(ticket.ticketId, currentUser.id);
 
+            if (!context.mounted) return;
             if (success) {
               ref.invalidate(ticketsStreamProvider);
+              context.push('/ticket/${ticket.ticketId}');
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Failed to claim ticket'),
+                  backgroundColor: AppColors.error,
+                ),
+              );
             }
-
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  success
-                      ? 'Ticket claimed successfully'
-                      : 'Failed to claim ticket',
-                ),
-                backgroundColor:
-                    success ? AppColors.success : AppColors.error,
-              ),
-            );
           },
         ),
       );
     }
 
-    if (ticket.status == 'BillRaised' && isMyTicket) {
-      return SizedBox(
-        width: double.infinity,
-        height: 40,
-        child: ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.success,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          icon: const Icon(LucideIcons.checkCircle, size: 18),
-          label: const Text('Complete ticket'),
-          onPressed: () async {
-            final error = await ref
-                .read(ticketStatusUpdaterProvider.notifier)
-                .updateStatus(ticket.ticketId, 'Closed');
-
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  error == null
-                      ? 'Ticket closed successfully'
-                      : 'Failed to update: $error',
-                ),
-                backgroundColor:
-                    error == null ? AppColors.success : AppColors.error,
-              ),
-            );
-          },
-        ),
-      );
-    }
-
-    if (ticket.status == 'BillRaised' && !isMyTicket) {
-      return SizedBox(
-        width: double.infinity,
-        height: 40,
-        child: ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.success,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          icon: const Icon(LucideIcons.indianRupee, size: 18),
-          label: const Text('Mark as billed'),
-          onPressed: () async {
-            final error = await ref
-                .read(ticketStatusUpdaterProvider.notifier)
-                .updateStatus(ticket.ticketId, 'BillProcessed');
-
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  error == null
-                      ? 'Marked as billed'
-                      : 'Failed to update: $error',
-                ),
-                backgroundColor:
-                    error == null ? AppColors.success : AppColors.error,
-              ),
-            );
-          },
-        ),
-      );
+    if (ticket.status == 'BillRaised') {
+      return const SizedBox.shrink();
     }
 
     return null;
