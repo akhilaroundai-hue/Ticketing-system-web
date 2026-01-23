@@ -55,20 +55,20 @@ Future<List<Customer>> customersList(Ref ref) async {
 
   while (true) {
     final to = from + batchSize - 1;
-    final response = await client
+    final List<dynamic> response = await client
         .from('customers')
         .select()
         .order('company_name')
         .range(from, to);
 
-    if (response is! List<dynamic> || response.isEmpty) {
+    if (response.isEmpty) {
       break;
     }
 
     customers.addAll(
-      response.map(
-        (item) => Customer.fromJson(item as Map<String, dynamic>),
-      ),
+      response
+          .cast<Map<String, dynamic>>()
+          .map(Customer.fromJson),
     );
 
     if (response.length < batchSize) {

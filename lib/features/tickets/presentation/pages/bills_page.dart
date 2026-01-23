@@ -20,7 +20,7 @@ class BillsPage extends ConsumerStatefulWidget {
 }
 
 class _BillsPageState extends ConsumerState<BillsPage> {
-  DateTime? _selectedDate = DateTime.now();
+  DateTime? _selectedDate;
   String _customerQuery = '';
   String _amountQuery = '';
   String _issueQuery = '';
@@ -40,7 +40,7 @@ class _BillsPageState extends ConsumerState<BillsPage> {
 
   void _clearFilters() {
     setState(() {
-      _selectedDate = DateTime.now();
+      _selectedDate = null;
       _customerQuery = '';
       _amountQuery = '';
       _issueQuery = '';
