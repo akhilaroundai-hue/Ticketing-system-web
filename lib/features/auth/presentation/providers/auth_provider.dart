@@ -51,7 +51,7 @@ class Agent {
 }
 
 // Auth state notifier
-@riverpod
+@Riverpod(keepAlive: true)
 class AuthNotifier extends _$AuthNotifier {
   static const _agentPrefsKey = 'auth.agent';
 
