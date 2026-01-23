@@ -45,16 +45,37 @@ Future<Map<String, int>> amcStats(Ref ref) async {
   }
 }
 
-// Get all customers for listing
+// Get all customers for listing (fetches in batches to bypass 1k row limit)
 @riverpod
 Future<List<Customer>> customersList(Ref ref) async {
   final client = Supabase.instance.client;
-  final response = await client
-      .from('customers')
-      .select()
-      .order('company_name');
+  const batchSize = 1000; // Supabase REST default limit
+  int from = 0;
+  final customers = <Customer>[];
 
-  return (response as List<dynamic>)
-      .map((item) => Customer.fromJson(item as Map<String, dynamic>))
-      .toList();
+  while (true) {
+    final to = from + batchSize - 1;
+    final response = await client
+        .from('customers')
+        .select()
+        .order('company_name')
+        .range(from, to);
+
+    if (response is! List<dynamic> || response.isEmpty) {
+      break;
+    }
+
+    customers.addAll(
+      response.map(
+        (item) => Customer.fromJson(item as Map<String, dynamic>),
+      ),
+    );
+
+    if (response.length < batchSize) {
+      break;
+    }
+    from += batchSize;
+  }
+
+  return customers;
 }
