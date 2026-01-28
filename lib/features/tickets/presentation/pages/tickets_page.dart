@@ -64,7 +64,8 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
   @override
   Widget build(BuildContext context) {
     final currentUser = ref.watch(authProvider);
-    final isSupport = currentUser?.isSupport == true;
+    final isSupport = currentUser?.isSupport == true ||
+        currentUser?.isSupportHead == true;
     final view = widget.initialView;
 
     if (!_didInitDeepLinkView && view != null) {
@@ -205,10 +206,10 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           child: Row(
             children: [
-              Icon(LucideIcons.clock, size: 16, color: AppColors.primary),
+              Icon(LucideIcons.listChecks, size: 16, color: AppColors.primary),
               const SizedBox(width: 10),
               const Text(
-                'Previous Days Pending',
+                'All Tickets',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
@@ -225,10 +226,8 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
             child: TicketsView(
               key: ValueKey('tickets_${category.name}_pending'),
               showAllTickets: true,
-              quickView: TicketQuickView.pending,
               showCustomerTabs: false,
               forcedCustomerCategory: category,
-              excludeToday: true,
             ),
           ),
         ),

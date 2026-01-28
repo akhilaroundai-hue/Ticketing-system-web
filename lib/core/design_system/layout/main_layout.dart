@@ -68,6 +68,8 @@ class _Sidebar extends ConsumerWidget {
         .maybeWhen(data: (value) => value, orElse: () => null);
 
     final role = currentUser?.role ?? 'Support';
+    final simplifyNav =
+        currentUser?.isSupport == true || currentUser?.isSupportHead == true;
 
     // Feature flags (global enable/disable)
     final enableNotifications = appSettings == null
@@ -88,6 +90,35 @@ class _Sidebar extends ConsumerWidget {
       if (advSettings == null) return true;
       return advSettings.canRoleSeeScreen(role, screenId);
     }
+
+    final showClaimTicketsLabel =
+        currentUser?.isSupport == true || currentUser?.isSupportHead == true;
+
+    final canViewAmcReminder = !simplifyNav &&
+        (currentUser?.isSupport == true ||
+            currentUser?.isSupportHead == true ||
+            currentUser?.isAgent == true);
+    final canViewPastTickets = !simplifyNav &&
+        (currentUser?.isSupport == true ||
+            currentUser?.isSupportHead == true ||
+            currentUser?.isAgent == true);
+    final canViewBills = !simplifyNav ||
+        currentUser?.isAdmin == true ||
+        currentUser?.isAccountant == true;
+    final canViewSalesOpportunity =
+        currentUser?.isSupportHead == true && !simplifyNav;
+    final canViewReports = enableReports &&
+        !simplifyNav &&
+        canSeeScreen('reports') &&
+        (currentUser?.isAdmin == true ||
+            currentUser?.isAccountant == true ||
+            currentUser?.isSupportHead == true);
+    final canViewDeals = enableDeals &&
+        !simplifyNav &&
+        canSeeScreen('deals') &&
+        (currentUser?.isAdmin == true ||
+            currentUser?.isAccountant == true ||
+            currentUser?.isSupportHead == true);
 
     return Container(
       width: 240,
@@ -147,7 +178,7 @@ class _Sidebar extends ConsumerWidget {
 
           // Navigation Items
           _NavItem(
-            label: 'Dashboard',
+            label: showClaimTicketsLabel ? 'Claim Tickets' : 'Dashboard',
             icon: LucideIcons.layoutDashboard,
             path: '/',
             isActive:
@@ -173,24 +204,21 @@ class _Sidebar extends ConsumerWidget {
                 currentPath.startsWith('/customers') ||
                 currentPath.startsWith('/customer'),
           ),
-          if (currentUser?.isSupport == true ||
-              currentUser?.isSupportHead == true ||
-              currentUser?.isAgent == true)
+          if (canViewAmcReminder)
             _NavItem(
               label: 'AMC Reminder',
               icon: LucideIcons.calendarClock,
               path: '/amc-reminder',
               isActive: currentPath.startsWith('/amc-reminder'),
             ),
-          _NavItem(
-            label: 'Bills',
-            icon: LucideIcons.receipt,
-            path: '/bills',
-            isActive: currentPath.startsWith('/bills'),
-          ),
-          if (currentUser?.isSupport == true ||
-              currentUser?.isSupportHead == true ||
-              currentUser?.isAgent == true)
+          if (canViewBills)
+            _NavItem(
+              label: 'Bills',
+              icon: LucideIcons.receipt,
+              path: '/bills',
+              isActive: currentPath.startsWith('/bills'),
+            ),
+          if (canViewPastTickets)
             _NavItem(
               label: 'Past Tickets',
               icon: LucideIcons.archive,
@@ -205,18 +233,14 @@ class _Sidebar extends ConsumerWidget {
               path: '/revenue',
               isActive: currentPath.startsWith('/revenue'),
             ),
-          if (role == 'Support Head')
+          if (canViewSalesOpportunity)
             _NavItem(
               label: 'Sales Opportunity',
               icon: LucideIcons.trendingUp,
               path: '/sales-opportunity',
               isActive: currentPath.startsWith('/sales-opportunity'),
             ),
-          if (enableReports &&
-              canSeeScreen('reports') &&
-              (currentUser?.isAdmin == true ||
-                  currentUser?.isAccountant == true ||
-                  currentUser?.isSupportHead == true))
+          if (canViewReports)
             _NavItem(
               label: 'Reports',
               icon: LucideIcons.barChart,
@@ -231,11 +255,7 @@ class _Sidebar extends ConsumerWidget {
               isActive: currentPath.startsWith('/users'),
             ),
           ],
-          if (enableDeals &&
-              canSeeScreen('deals') &&
-              (currentUser?.isAdmin == true ||
-                  currentUser?.isAccountant == true ||
-                  currentUser?.isSupportHead == true))
+          if (canViewDeals)
             _NavItem(
               label: 'Deals',
               icon: LucideIcons.briefcase,
@@ -545,8 +565,12 @@ class _BottomNav extends ConsumerWidget {
     final isAccountant = currentUser?.isAccountant == true;
     final isAdmin = currentUser?.isAdmin == true;
     final isSupportHead = currentUser?.isSupportHead == true;
+    final simplifyNav =
+        currentUser?.isSupport == true || currentUser?.isSupportHead == true;
+    final renameDashboard = simplifyNav;
     final canSeeRevenue = isAdmin || isAccountant;
-    final canSeeReports = isAdmin || isSupportHead || isAccountant;
+    final canSeeReports = (!simplifyNav) &&
+        (isAdmin || isSupportHead || isAccountant);
     final showReportsDestination = enableReports && canSeeReports;
 
     // Unified bottom navigation structure
@@ -554,13 +578,13 @@ class _BottomNav extends ConsumerWidget {
     final navRoutes = <String>[];
 
     destinations.add(
-      const NavigationDestination(
-        icon: Icon(LucideIcons.layoutDashboard),
-        selectedIcon: Icon(
+      NavigationDestination(
+        icon: const Icon(LucideIcons.layoutDashboard),
+        selectedIcon: const Icon(
           LucideIcons.layoutDashboard,
           color: AppColors.primary,
         ),
-        label: 'Dashboard',
+        label: renameDashboard ? 'Claim Tickets' : 'Dashboard',
       ),
     );
     navRoutes.add('/');

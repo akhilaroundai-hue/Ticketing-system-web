@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:intl/intl.dart';
 import '../../../../core/design_system/components/status_badge.dart';
 import '../../../../core/design_system/theme/app_colors.dart';
 import '../../../tickets/domain/entities/ticket.dart';
@@ -11,7 +12,7 @@ import '../../../customers/domain/entities/customer.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../dashboard/presentation/providers/app_settings_provider.dart';
 
-const Set<String> _stageInProgressStatuses = {
+const Set<String> _stagePendingStatuses = {
   'in progress',
   'inprogress',
   'waiting for customer',
@@ -21,16 +22,23 @@ const Set<String> _stageInProgressStatuses = {
   'pending',
   'acknowledged',
   'assigned',
-  'active',
 };
 
 const Set<String> _stageResolvedStatuses = {
   'resolved',
-  'billraised',
-  'billprocessed',
 };
 
-const Set<String> _stageClosedStatuses = {'closed'};
+const Set<String> _stageBilledStatuses = {
+  'billraised',
+  'billprocessed',
+  'closed',
+};
+
+const Set<String> _autoStartStatuses = {
+  'New',
+  'Open',
+  'Waiting for Customer',
+};
 
 enum TicketCardLayout {
   standard, // Vertical lists: Center Company Name
@@ -130,10 +138,12 @@ class TicketCardWithAmc extends ConsumerWidget {
         currentUser?.isAgent == true;
     final isCompactLayout = layout == TicketCardLayout.compact;
 
+    final hasRibbon = ribbonLabel != null;
+
     return Container(
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: borderColor ?? AppColors.border,
           width: borderColor != null ? 2 : 1,
@@ -141,10 +151,10 @@ class TicketCardWithAmc extends ConsumerWidget {
         boxShadow: [
           BoxShadow(
             color: isDarkSurface
-                ? Colors.black.withValues(alpha: 0.4)
-                : Colors.black.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+                ? Colors.black.withValues(alpha: 0.3)
+                : Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -156,7 +166,10 @@ class TicketCardWithAmc extends ConsumerWidget {
                 onTap: () => context.push('/ticket/${ticket.ticketId}'),
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   child: isCompactLayout
                       ? _buildCompactContent(
                           context: context,
@@ -168,6 +181,7 @@ class TicketCardWithAmc extends ConsumerWidget {
                           slaChip: slaChip,
                           canClaimTicket: canClaimTicket,
                           isMyTicket: isMyTicket,
+                          hasRibbon: hasRibbon,
                         )
                       : _buildStandardContent(
                           context: context,
@@ -179,13 +193,14 @@ class TicketCardWithAmc extends ConsumerWidget {
                           slaChip: slaChip,
                           canClaimTicket: canClaimTicket,
                           isMyTicket: isMyTicket,
+                          hasRibbon: hasRibbon,
                         ),
                 ),
               ),
               if (ribbonLabel != null)
                 Positioned(
-                  top: 12,
                   right: 12,
+                  bottom: 12,
                   child: _buildRibbon(
                     label: ribbonLabel,
                     color: ribbonColor ?? Colors.white,
@@ -355,6 +370,7 @@ class TicketCardWithAmc extends ConsumerWidget {
     Widget? slaChip,
     required bool canClaimTicket,
     required bool isMyTicket,
+    required bool hasRibbon,
   }) {
     final customer = customerAsync.maybeWhen(
       data: (data) => data == null ? null : Customer.fromJson(data),
@@ -363,8 +379,13 @@ class TicketCardWithAmc extends ConsumerWidget {
     final companyName = customer?.companyName.trim().isEmpty == true
         ? null
         : customer?.companyName;
-    final createdLabel =
-        ticket.createdAt != null ? timeago.format(ticket.createdAt!) : null;
+    final referenceDate =
+        (ticket.updatedAt ?? ticket.createdAt)?.toLocal();
+    final createdTimestamp = referenceDate != null
+        ? DateFormat('dd MMM yyyy • hh:mm a').format(referenceDate)
+        : null;
+    final createdRelative =
+        referenceDate != null ? timeago.format(referenceDate) : null;
     final assignmentChip = _buildAssignmentChip(ref, isMyTicket);
     final actionButton = _buildActionButtons(
       context: context,
@@ -375,7 +396,8 @@ class TicketCardWithAmc extends ConsumerWidget {
     final isUnassigned =
         ticket.assignedTo == null || ticket.assignedTo!.isEmpty;
 
-    final pills = <Widget>[
+    final metadataChips = <Widget>[
+      _buildStatusBadge(ticket.status),
       if (assignmentChip != null) assignmentChip,
       if (assignmentChip == null && isUnassigned)
         _buildInfoPill(
@@ -386,17 +408,86 @@ class TicketCardWithAmc extends ConsumerWidget {
           textColor: AppColors.slate700,
         ),
       if (slaChip != null) slaChip,
+      if (customer != null &&
+          (customer.isAmcActive || highlightPriorityCustomer))
+        _AmcBadge(isActive: customer.isAmcActive),
+      if (_shouldShowBillingChip(ticket.status))
+        _buildAmountChip(ticket.billAmount),
     ];
-
-    if (customer != null &&
-        (customer.isAmcActive || highlightPriorityCustomer)) {
-      pills.add(_AmcBadge(isActive: customer.isAmcActive));
-    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 4),
+        if (companyName != null || createdTimestamp != null) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: companyName != null
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            LucideIcons.building2,
+                            size: 18,
+                            color: AppColors.slate500,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              companyName,
+                              style: TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w800,
+                                color: headingColor,
+                                height: 1.2,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        'No company linked',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.slate500,
+                        ),
+                      ),
+              ),
+              if (createdTimestamp != null) ...[
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      createdTimestamp,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.slate900,
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                    if (createdRelative != null)
+                      Text(
+                        createdRelative,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppColors.slate600,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+        const SizedBox(height: 2),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -421,64 +512,15 @@ class TicketCardWithAmc extends ConsumerWidget {
             _buildStatusBadge(ticket.status),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _buildStatusProgressBar(ticket.status),
-        if (companyName != null || createdLabel != null) ...[
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              if (companyName != null) ...[
-                Icon(
-                  LucideIcons.building2,
-                  size: 14,
-                  color: AppColors.slate600,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    companyName,
-                    style: TextStyle(
-                      color: AppColors.slate800,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-              if (companyName != null && createdLabel != null)
-                const SizedBox(width: 12),
-              if (createdLabel != null)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      LucideIcons.clock,
-                      size: 12,
-                      color: subtleIconColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      createdLabel,
-                      style: TextStyle(
-                        color: bodyColor,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ],
-        if (pills.isNotEmpty) ...[
-          const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        if (metadataChips.isNotEmpty)
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: pills,
+            children: metadataChips,
           ),
-        ],
         if (actionButton != null) ...[
           const SizedBox(height: 12),
           actionButton,
@@ -497,6 +539,7 @@ class TicketCardWithAmc extends ConsumerWidget {
     Widget? slaChip,
     required bool canClaimTicket,
     required bool isMyTicket,
+    required bool hasRibbon,
   }) {
     final customer = customerAsync.maybeWhen(
       data: (data) => data == null ? null : Customer.fromJson(data),
@@ -505,8 +548,13 @@ class TicketCardWithAmc extends ConsumerWidget {
     final companyName = customer?.companyName.trim().isEmpty == true
         ? null
         : customer?.companyName;
-    final createdLabel =
-        ticket.createdAt != null ? timeago.format(ticket.createdAt!) : null;
+    final referenceDate =
+        (ticket.updatedAt ?? ticket.createdAt)?.toLocal();
+    final createdTimestamp = referenceDate != null
+        ? DateFormat('dd MMM yyyy • hh:mm a').format(referenceDate)
+        : null;
+    final createdRelative =
+        referenceDate != null ? timeago.format(referenceDate) : null;
     final assignmentChip = _buildAssignmentChip(ref, isMyTicket);
     final actionButton = _buildActionButtons(
       context: context,
@@ -514,18 +562,87 @@ class TicketCardWithAmc extends ConsumerWidget {
       canClaimTicket: canClaimTicket,
       isMyTicket: isMyTicket,
     );
-    final chips = <Widget>[
+    final metadataChips = <Widget>[
+      _buildStatusBadge(ticket.status),
       if (assignmentChip != null) assignmentChip,
+      if (assignmentChip == null)
+        _buildInfoPill(
+          icon: LucideIcons.userPlus,
+          label: 'Unassigned',
+          iconColor: AppColors.slate500,
+          backgroundColor: AppColors.slate100,
+          textColor: AppColors.slate700,
+        ),
+      if (slaChip != null) slaChip,
       if (customer != null &&
           (customer.isAmcActive || highlightPriorityCustomer))
         _AmcBadge(isActive: customer.isAmcActive),
-      _buildStatusBadge(ticket.status),
-      if (slaChip != null) slaChip,
+      if (_shouldShowBillingChip(ticket.status))
+        _buildAmountChip(ticket.billAmount),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (companyName != null || createdTimestamp != null) ...[
+          Padding(
+            padding: EdgeInsets.only(right: hasRibbon ? 88 : 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: companyName != null
+                      ? Text(
+                          companyName,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: headingColor,
+                            height: 1.2,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        )
+                      : Text(
+                          'No company linked',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.slate500,
+                          ),
+                        ),
+                ),
+                if (createdTimestamp != null) ...[
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        createdTimestamp,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.slate900,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                      if (createdRelative != null)
+                        Text(
+                          createdRelative,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.slate600,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -548,66 +665,15 @@ class TicketCardWithAmc extends ConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         _buildStatusProgressBar(ticket.status),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildStatusBadge(ticket.status),
-            if (slaChip != null) slaChip,
-          ],
-        ),
-        if (companyName != null || createdLabel != null) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              if (companyName != null)
-                Expanded(
-                  child: Text(
-                    companyName,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.slate800,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              if (createdLabel != null) ...[
-                if (companyName != null) const SizedBox(width: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      LucideIcons.clock,
-                      size: 12,
-                      color: subtleIconColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      createdLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: bodyColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ],
-        if (chips.isNotEmpty) ...[
-          const SizedBox(height: 10),
+        if (metadataChips.isNotEmpty)
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: chips,
+            children: metadataChips,
           ),
-        ],
         if (actionButton != null) ...[
           const SizedBox(height: 12),
           actionButton,
@@ -698,47 +764,158 @@ class TicketCardWithAmc extends ConsumerWidget {
     final isUnassigned =
         ticket.assignedTo == null || ticket.assignedTo!.isEmpty;
 
+    final buttons = <Widget>[];
+
     if (canClaimTicket && isUnassigned) {
-      return SizedBox(
-        width: double.infinity,
-        height: 40,
-        child: OutlinedButton.icon(
-          icon: const Icon(LucideIcons.userCheck, size: 16),
-          label: const Text('Claim ticket'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.slate900,
-            side: BorderSide(color: AppColors.border),
+      buttons.add(
+        SizedBox(
+          width: double.infinity,
+          height: 40,
+          child: OutlinedButton.icon(
+            icon: const Icon(LucideIcons.userCheck, size: 16),
+            label: const Text('Claim ticket'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.slate900,
+              side: BorderSide(color: AppColors.border),
+            ),
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final currentUser = ref.read(authProvider);
+              if (currentUser == null) return;
+
+              final success = await ref
+                  .read(ticketAssignerProvider.notifier)
+                  .assignTicket(ticket.ticketId, currentUser.id);
+
+              if (!context.mounted) return;
+              if (success) {
+                ref.invalidate(ticketsStreamProvider);
+                String message = 'Ticket claimed successfully';
+                Color snackColor = AppColors.success;
+
+                if (_autoStartStatuses.contains(ticket.status)) {
+                  final statusError = await ref
+                      .read(ticketStatusUpdaterProvider.notifier)
+                      .updateStatus(ticket.ticketId, 'In Progress');
+
+                  if (!context.mounted) return;
+
+                  if (statusError != null) {
+                    message =
+                        'Ticket claimed but failed to start work: $statusError';
+                    snackColor = AppColors.error;
+                  } else {
+                    message = 'Ticket claimed and moved to In Progress';
+                  }
+                }
+
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(message),
+                    backgroundColor: snackColor,
+                  ),
+                );
+
+                context.push('/ticket/${ticket.ticketId}');
+              } else {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to claim ticket'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
           ),
-          onPressed: () async {
-            final currentUser = ref.read(authProvider);
-            if (currentUser == null) return;
-
-            final success = await ref
-                .read(ticketAssignerProvider.notifier)
-                .assignTicket(ticket.ticketId, currentUser.id);
-
-            if (!context.mounted) return;
-            if (success) {
-              ref.invalidate(ticketsStreamProvider);
-              context.push('/ticket/${ticket.ticketId}');
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Failed to claim ticket'),
-                  backgroundColor: AppColors.error,
-                ),
-              );
-            }
-          },
         ),
       );
     }
 
-    if (ticket.status == 'BillRaised') {
-      return const SizedBox.shrink();
+    if (isMyTicket && !isUnassigned) {
+      if (ticket.status == 'In Progress') {
+        buttons.add(
+          SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: FilledButton.icon(
+              icon: const Icon(LucideIcons.pauseCircle, size: 16),
+              label: const Text('Put on Hold'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.warning,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => _updateTicketStatus(
+                context,
+                ref,
+                'On Hold',
+              ),
+            ),
+          ),
+        );
+      } else if (ticket.status == 'On Hold') {
+        buttons.add(
+          SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: FilledButton.icon(
+              icon: const Icon(LucideIcons.playCircle, size: 16),
+              label: const Text('Resume Work'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.success,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => _updateTicketStatus(
+                context,
+                ref,
+                'In Progress',
+              ),
+            ),
+          ),
+        );
+      }
     }
 
-    return null;
+    if (buttons.isEmpty) {
+      if (ticket.status == 'BillRaised') {
+        return const SizedBox.shrink();
+      }
+      return null;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (int i = 0; i < buttons.length; i++) ...[
+          buttons[i],
+          if (i != buttons.length - 1) const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _updateTicketStatus(
+    BuildContext context,
+    WidgetRef ref,
+    String status,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final error = await ref
+        .read(ticketStatusUpdaterProvider.notifier)
+        .updateStatus(ticket.ticketId, status);
+
+    if (!context.mounted) return;
+
+    final success = error == null;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? (status == 'On Hold' ? 'Ticket paused' : 'Ticket resumed')
+              : 'Failed to update status: $error',
+        ),
+        backgroundColor: success ? AppColors.success : AppColors.error,
+      ),
+    );
   }
 
   Widget _buildStatusBadge(String status) {
@@ -753,40 +930,29 @@ class TicketCardWithAmc extends ConsumerWidget {
       variant = StatusVariant.neutral;
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        StatusBadge(label: status, variant: variant),
-        if ([
-          'BillRaised',
-          'BillProcessed',
-          'Resolved',
-          'Closed',
-        ].contains(status)) ...[
-          const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: AppColors.slate100,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: AppColors.slate200),
-            ),
-            child: Text(
-              'Amount: ₹${ticket.billAmount ?? 0}',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppColors.slate700,
-              ),
-            ),
-          ),
-        ] else ...[
-          // Add empty space to maintain consistent height when no amount is shown
-          const SizedBox(height: 24),
-        ],
-      ],
+    return StatusBadge(label: status, variant: variant);
+  }
+
+  Widget _buildAmountChip(num? amount) {
+    final label = amount == null
+        ? 'Amount pending'
+        : 'Amount: ₹${amount.toStringAsFixed(0)}';
+    return _buildInfoPill(
+      icon: LucideIcons.indianRupee,
+      label: label,
+      iconColor: AppColors.slate500,
+      textColor: AppColors.slate700,
+      backgroundColor: AppColors.slate100,
     );
+  }
+
+  bool _shouldShowBillingChip(String status) {
+    return [
+      'BillRaised',
+      'BillProcessed',
+      'Resolved',
+      'Closed',
+    ].contains(status);
   }
 
   Widget _buildPriorityIcon(String? priority) {
@@ -818,8 +984,9 @@ class TicketCardWithAmc extends ConsumerWidget {
 
     return Icon(icon, size: 14, color: color);
   }
+
   Widget _buildStatusProgressBar(String status) {
-    const stageLabels = ['Open', 'In Progress', 'Resolved', 'Closed'];
+    const stageLabels = ['Start', 'Pending', 'Resolved', 'Billed'];
     final activeIndex = _statusStageIndex(status);
     final totalSegments = stageLabels.length * 2 - 1;
 
@@ -842,53 +1009,34 @@ class TicketCardWithAmc extends ConsumerWidget {
             final nodeIndex = index ~/ 2;
             final isReached = activeIndex >= nodeIndex;
             return Container(
-              width: 26,
-              height: 26,
+              width: 12,
+              height: 12,
               decoration: BoxDecoration(
                 color: isReached ? AppColors.success : Colors.white,
                 border: Border.all(
-                  color: isReached ? AppColors.success : AppColors.slate300,
+                  color: isReached ? AppColors.success : AppColors.slate200,
                   width: 2,
                 ),
                 shape: BoxShape.circle,
-                boxShadow: [
-                  if (isReached)
-                    BoxShadow(
-                      color: AppColors.success.withValues(alpha: 0.25),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                ],
-              ),
-              child: Center(
-                child: Text(
-                  '${nodeIndex + 1}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: isReached ? Colors.white : AppColors.slate500,
-                  ),
-                ),
               ),
             );
           }),
         ),
         const SizedBox(height: 6),
         Row(
-          children: List.generate(stageLabels.length, (index) {
-            final isReached = activeIndex >= index;
-            return Expanded(
-              child: Text(
-                stageLabels[index],
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isReached ? FontWeight.w600 : FontWeight.w500,
-                  color: isReached ? AppColors.slate900 : AppColors.slate400,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: stageLabels
+              .map(
+                (label) => Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.slate500,
+                  ),
                 ),
-              ),
-            );
-          }),
+              )
+              .toList(),
         ),
       ],
     );
@@ -896,9 +1044,9 @@ class TicketCardWithAmc extends ConsumerWidget {
 
   int _statusStageIndex(String status) {
     final normalized = status.trim().toLowerCase();
-    if (_stageClosedStatuses.contains(normalized)) return 3;
+    if (_stageBilledStatuses.contains(normalized)) return 3;
     if (_stageResolvedStatuses.contains(normalized)) return 2;
-    if (_stageInProgressStatuses.contains(normalized)) return 1;
+    if (_stagePendingStatuses.contains(normalized)) return 1;
     return 0;
   }
 

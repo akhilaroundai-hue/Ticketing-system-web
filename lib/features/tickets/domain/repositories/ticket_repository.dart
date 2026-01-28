@@ -5,6 +5,7 @@ import '../entities/comment.dart';
 
 abstract class TicketRepository {
   Stream<List<Ticket>> getTickets({String? statusFilter});
+  Stream<List<Ticket>> getTicketsByStatuses(List<String> statuses);
   Future<Either<Failure, Unit>> createTicket(Ticket ticket);
   Future<Either<Failure, Unit>> updateTicketStatus(
     String ticketId,

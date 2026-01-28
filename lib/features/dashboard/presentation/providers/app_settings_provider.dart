@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/models/advanced_settings.dart';
 
 /// Simple app-wide feature flags loaded from the `app_settings` table.
 final appSettingsProvider = FutureProvider<Map<String, bool>>((ref) async {
+  final link = ref.keepAlive();
+  final timer = Timer(const Duration(minutes: 5), link.close);
+  ref.onDispose(timer.cancel);
+
   final client = Supabase.instance.client;
   final response = await client.from('app_settings').select();
 
@@ -20,6 +26,10 @@ final appSettingsProvider = FutureProvider<Map<String, bool>>((ref) async {
 /// Advanced settings provider with role permissions and workflow config.
 /// Parses structured JSON from app_settings rows with safe defaults.
 final advancedSettingsProvider = FutureProvider<AdvancedSettings>((ref) async {
+  final link = ref.keepAlive();
+  final timer = Timer(const Duration(minutes: 5), link.close);
+  ref.onDispose(timer.cancel);
+
   final client = Supabase.instance.client;
   final response = await client.from('app_settings').select();
 

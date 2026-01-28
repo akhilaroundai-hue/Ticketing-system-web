@@ -6,6 +6,7 @@ import '../../../tickets/presentation/providers/ticket_provider.dart';
 import '../../../tickets/domain/entities/ticket.dart';
 import '../../../customers/presentation/providers/customer_provider.dart';
 import '../../../customers/domain/entities/customer.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -15,8 +16,16 @@ class SalesOpportunityPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ticketsAsync = ref.watch(ticketsStreamProvider);
+    final ticketsAsync = ref.watch(allTicketsStreamProvider);
     final customersAsync = ref.watch(customersListProvider);
+    final currentUser = ref.watch(authProvider);
+    final agentsAsync = ref.watch(agentsListProvider);
+    final agentsById = {
+      for (final agent in agentsAsync.asData?.value ?? const <Map<String, dynamic>>[])
+        if ((agent['id'] ?? '').toString().isNotEmpty)
+          (agent['id'] as String): agent,
+    };
+    final isAgentsLoading = agentsAsync.isLoading;
 
     return MainLayout(
       currentPath: '/sales-opportunity',
@@ -47,6 +56,17 @@ class SalesOpportunityPage extends ConsumerWidget {
                         ),
                       );
 
+                    final raisedByMe = currentUser == null
+                        ? const <Ticket>[]
+                        : allTickets
+                            .where((t) => t.createdBy == currentUser.id)
+                            .toList()
+                          ..sort(
+                            (a, b) => (b.createdAt ?? DateTime(0)).compareTo(
+                              a.createdAt ?? DateTime(0),
+                            ),
+                          );
+
                     if (unclaimedTickets.isEmpty) {
                       return const EmptyStateCard(
                         icon: LucideIcons.checkCircle,
@@ -61,9 +81,23 @@ class SalesOpportunityPage extends ConsumerWidget {
                           for (final c in customers) c.id: c
                         };
 
-                        return _UnclaimedTicketsTable(
-                          tickets: unclaimedTickets,
-                          customersById: customersById,
+                        return Column(
+                          children: [
+                            Expanded(
+                              child: _UnclaimedTicketsTable(
+                                tickets: unclaimedTickets,
+                                customersById: customersById,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            if (currentUser != null)
+                              _RaisedTicketsCard(
+                                tickets: raisedByMe,
+                                customersById: customersById,
+                                agentsById: agentsById,
+                                isAgentsLoading: isAgentsLoading,
+                              ),
+                          ],
                         );
                       },
                       loading: () => const Center(
@@ -317,6 +351,151 @@ class _UnclaimedTicketsTable extends StatelessWidget {
           fontSize: 11,
           color: color,
           fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _RaisedTicketsCard extends StatelessWidget {
+  final List<Ticket> tickets;
+  final Map<String, Customer> customersById;
+  final Map<String, Map<String, dynamic>> agentsById;
+  final bool isAgentsLoading;
+
+  const _RaisedTicketsCard({
+    required this.tickets,
+    required this.customersById,
+    required this.agentsById,
+    required this.isAgentsLoading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.activity, size: 18, color: AppColors.primary),
+              const SizedBox(width: 8),
+              const Text(
+                'Tickets you raised',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.slate900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (tickets.isEmpty)
+            Text(
+              'No tickets raised by you yet.',
+              style: TextStyle(color: AppColors.slate500),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: tickets.length,
+              separatorBuilder: (_, __) => const Divider(height: 16),
+              itemBuilder: (context, index) {
+                final ticket = tickets[index];
+                final companyName =
+                    customersById[ticket.customerId]?.companyName ?? 'Unknown customer';
+                final assignedLabel = _assignedText(ticket);
+                return InkWell(
+                  onTap: () => context.go('/ticket/${ticket.ticketId}'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              ticket.title,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.slate900,
+                              ),
+                            ),
+                          ),
+                          _StatusChip(label: ticket.status),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        companyName,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.slate600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(LucideIcons.userCheck, size: 14, color: AppColors.slate500),
+                          const SizedBox(width: 6),
+                          Text(
+                            assignedLabel,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: assignedLabel == 'Unassigned'
+                                  ? AppColors.slate600
+                                  : AppColors.success,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _assignedText(Ticket ticket) {
+    final id = ticket.assignedTo;
+    if (id == null || id.isEmpty) {
+      return 'Unassigned';
+    }
+    final agent = agentsById[id];
+    if (agent == null) {
+      return isAgentsLoading ? 'Checking assignee…' : 'Assigned agent';
+    }
+    return (agent['full_name'] ?? agent['username'] ?? 'Assigned agent').toString();
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+
+  const _StatusChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.slate100,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppColors.slate700,
         ),
       ),
     );

@@ -449,6 +449,13 @@ class _AccountantDashboardPageState
     required String emptyMessage,
     required bool showProcessButton,
   }) {
+    final agentsAsync = ref.watch(agentsListProvider);
+    final agentsById = {
+      for (final agent in agentsAsync.asData?.value ?? const <Map<String, dynamic>>[])
+        if ((agent['id'] ?? '').toString().isNotEmpty)
+          (agent['id'] as String): agent,
+    };
+
     return ticketsAsync.when(
       data: (tickets) {
         final baseTickets = tickets.where(filter).toList();
@@ -467,144 +474,133 @@ class _AccountantDashboardPageState
           );
         }
 
-        return Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
+        return ListView.separated(
+          key: PageStorageKey(
+            showProcessButton ? 'pendingBillingList' : 'billedList',
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          physics: const AlwaysScrollableScrollPhysics(),
+          itemCount: filteredTickets.length + 1,
+          separatorBuilder: (context, index) => const SizedBox(height: 16),
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return Align(
                 alignment: Alignment.centerRight,
                 child: AppButton.ghost(
                   label: 'Copy CSV',
                   icon: LucideIcons.download,
-                  onPressed: filteredTickets.isEmpty
-                      ? null
-                      : () => _copyCsv(filteredTickets),
+                  onPressed:
+                      filteredTickets.isEmpty ? null : () => _copyCsv(filteredTickets),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: filteredTickets.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 16),
-                  itemBuilder: (context, index) {
-                    final ticket = filteredTickets[index];
-                    return AppCard(
-                      onTap: () => context.push('/ticket/${ticket.ticketId}'),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      ticket.title,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.slate900,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Ticket #${ticket.ticketId.substring(0, 8)} · Priority: ${ticket.priority}',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: AppColors.slate500,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Customer: ${ticket.customerId}',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.slate500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+              );
+            }
+
+            final ticket = filteredTickets[index - 1];
+
+            return AppCard(
+              onTap: () => context.push('/ticket/${ticket.ticketId}'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              ticket.title,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.slate900,
                               ),
-                              if (showProcessButton)
-                                AppButton(
-                                  label: 'Process Bill',
-                                  icon: LucideIcons.checkCircle,
-                                  onPressed: () async {
-                                    final error = await ref
-                                        .read(
-                                          ticketStatusUpdaterProvider.notifier,
-                                        )
-                                        .updateStatus(
-                                          ticket.ticketId,
-                                          'Closed',
-                                        );
-                                    if (context.mounted) {
-                                      final success = error == null;
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            success
-                                                ? 'Bill processed'
-                                                : 'Failed to process: $error',
-                                          ),
-                                          backgroundColor: success
-                                              ? AppColors.success
-                                              : AppColors.error,
-                                        ),
-                                      );
-                                    }
-                                  },
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          // Show assigned agent
-                          if (ticket.assignedTo != null &&
-                              ticket.assignedTo!.isNotEmpty)
-                            ref
-                                .watch(
-                                  ticketAssignedAgentProvider(
-                                    ticket.assignedTo,
-                                  ),
-                                )
-                                .when(
-                                  data: (agentData) {
-                                    if (agentData == null) {
-                                      return const SizedBox();
-                                    }
-                                    return Row(
-                                      children: [
-                                        Icon(
-                                          LucideIcons.user,
-                                          size: 14,
-                                          color: AppColors.slate500,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Handled by: ${agentData['username']}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: AppColors.slate600,
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                  loading: () => const SizedBox(),
-                                  error: (_, __) => const SizedBox(),
-                                ),
-                        ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Ticket #${ticket.ticketId.substring(0, 8)} · Priority: ${ticket.priority}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.slate500,
+                              ),
+                            ),
+                            Text(
+                              'Customer: ${ticket.customerId}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.slate500,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    );
-                  },
-                ),
+                      if (showProcessButton)
+                        AppButton(
+                          label: 'Process Bill',
+                          icon: LucideIcons.checkCircle,
+                          onPressed: () async {
+                            final error = await ref
+                                .read(
+                                  ticketStatusUpdaterProvider.notifier,
+                                )
+                                .updateStatus(
+                                  ticket.ticketId,
+                                  'Closed',
+                                );
+                            if (context.mounted) {
+                              final success = error == null;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    success
+                                        ? 'Bill processed'
+                                        : 'Failed to process: $error',
+                                  ),
+                                  backgroundColor:
+                                      success ? AppColors.success : AppColors.error,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (ticket.assignedTo != null && ticket.assignedTo!.isNotEmpty)
+                    Builder(
+                      builder: (context) {
+                        final agentData = agentsById[ticket.assignedTo];
+                        if (agentData == null) {
+                          return agentsAsync.isLoading
+                              ? const SizedBox()
+                              : const SizedBox();
+                        }
+                        final displayName =
+                            (agentData['full_name'] ?? agentData['username'] ?? 'Agent')
+                                .toString();
+                        return Row(
+                          children: [
+                            Icon(
+                              LucideIcons.user,
+                              size: 14,
+                              color: AppColors.slate500,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Handled by: $displayName',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.slate600,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),

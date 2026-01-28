@@ -84,6 +84,20 @@ class SupabaseTicketRepository implements TicketRepository {
   }
 
   @override
+  Stream<List<Ticket>> getTicketsByStatuses(List<String> statuses) {
+    if (statuses.isEmpty) {
+      return getTickets(statusFilter: null);
+    }
+
+    return _supabase
+        .from('tickets')
+        .stream(primaryKey: ['id'])
+        .inFilter('status', statuses)
+        .order('created_at', ascending: false)
+        .map((list) => list.map(Ticket.fromJson).toList());
+  }
+
+  @override
   Future<Either<Failure, Unit>> createTicket(Ticket ticket) async {
     try {
       final data = ticket.toJson();

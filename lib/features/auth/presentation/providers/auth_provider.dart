@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -59,17 +60,51 @@ class AuthNotifier extends _$AuthNotifier {
   Agent? build() => null;
 
   Future<bool> login(String username, String password) async {
+    final sanitizedUsername = username.trim();
+    final sanitizedPassword = password.trim();
+
     try {
-      final response = await Supabase.instance.client.rpc(
-        'login_agent',
-        params: {'p_username': username, 'p_password': password},
-      );
+      final client = Supabase.instance.client;
+
+      // Fast-path: direct table lookup is faster than RPC and avoids server-side function latency.
+      Map<String, dynamic>? agentRow;
+      try {
+        agentRow = await client
+            .from('agents')
+            .select('id, username, full_name, role')
+            .eq('username', sanitizedUsername)
+            .eq('password', sanitizedPassword)
+            .limit(1)
+            .maybeSingle()
+            .timeout(const Duration(seconds: 12));
+      } on TimeoutException catch (_) {
+        appLogger.warning(
+          'Direct agent lookup timed out; falling back to RPC',
+          context: {'username': sanitizedUsername},
+        );
+      }
+
+      if (agentRow != null) {
+        state = Agent.fromJson(agentRow);
+        await _persistAgent(state!);
+        return true;
+      }
+
+      final response = await client
+          .rpc(
+            'login_agent',
+            params: {
+              'p_username': sanitizedUsername,
+              'p_password': sanitizedPassword,
+            },
+          )
+          .timeout(const Duration(seconds: 12));
 
       if (response is! Map<String, dynamic>) {
         appLogger.warning(
           'Login RPC returned unexpected payload',
           context: {
-            'username': username,
+            'username': sanitizedUsername,
             'payloadType': response.runtimeType.toString(),
           },
         );
@@ -86,7 +121,15 @@ class AuthNotifier extends _$AuthNotifier {
 
       appLogger.info(
         'Login RPC returned failure response',
-        context: {'username': username, 'response': response},
+        context: {'username': sanitizedUsername, 'response': response},
+      );
+      return false;
+    } on TimeoutException catch (e, stackTrace) {
+      appLogger.error(
+        'Login timed out',
+        error: e,
+        stackTrace: stackTrace,
+        context: {'username': sanitizedUsername},
       );
       return false;
     } catch (e, stackTrace) {
@@ -97,7 +140,7 @@ class AuthNotifier extends _$AuthNotifier {
         'Login failed',
         error: e,
         stackTrace: stackTrace,
-        context: {'username': username},
+        context: {'username': sanitizedUsername},
       );
       return false;
     }

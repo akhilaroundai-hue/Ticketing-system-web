@@ -63,6 +63,12 @@ String _agentLoadLabel(int count) {
   return 'Handling $count tickets';
 }
 
+const Set<String> _autoStartStatuses = {
+  'New',
+  'Open',
+  'Waiting for Customer',
+};
+
 class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
   Future<void> _updateStatus(String newStatus) async {
     final error = await ref
@@ -744,12 +750,35 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                         if (success) {
                           ref.invalidate(ticketsStreamProvider);
                           if (context.mounted) {
-                            // already on detail, just refresh UI
-                            final snackBar = SnackBar(
-                              content: const Text('Ticket claimed successfully'),
-                              backgroundColor: AppColors.success,
+                            String message = 'Ticket claimed successfully';
+                            Color snackColor = AppColors.success;
+
+                            if (_autoStartStatuses.contains(ticket.status)) {
+                              final statusError = await ref
+                                  .read(
+                                    ticketStatusUpdaterProvider.notifier,
+                                  )
+                                  .updateStatus(
+                                    ticket.ticketId,
+                                    'In Progress',
+                                  );
+
+                              if (statusError != null) {
+                                message =
+                                    'Ticket claimed but failed to start work: $statusError';
+                                snackColor = AppColors.error;
+                              } else {
+                                message =
+                                    'Ticket claimed and moved to In Progress';
+                              }
+                            }
+
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(message),
+                                backgroundColor: snackColor,
+                              ),
                             );
-                            messenger.showSnackBar(snackBar);
                           }
                         } else {
                           messenger.showSnackBar(
@@ -773,16 +802,6 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                       runSpacing: 8,
                       children: [
                         // Status Transitions
-                        if ([
-                          'New',
-                          'Open',
-                          'Waiting for Customer',
-                        ].contains(ticket.status))
-                          AppButton.secondary(
-                            label: 'Start Work',
-                            icon: LucideIcons.playCircle,
-                            onPressed: () => _updateStatus('In Progress'),
-                          ),
                         if (ticket.status == 'In Progress')
                           AppButton.secondary(
                             label: 'Put On Hold',
