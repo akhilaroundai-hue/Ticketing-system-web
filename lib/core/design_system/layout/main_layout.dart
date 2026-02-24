@@ -68,6 +68,7 @@ class _Sidebar extends ConsumerWidget {
         .maybeWhen(data: (value) => value, orElse: () => null);
 
     final role = currentUser?.role ?? 'Support';
+    final isSales = currentUser?.isSales == true;
     final simplifyNav =
         currentUser?.isSupport == true || currentUser?.isSupportHead == true;
 
@@ -93,6 +94,7 @@ class _Sidebar extends ConsumerWidget {
 
     final showClaimTicketsLabel =
         currentUser?.isSupport == true || currentUser?.isSupportHead == true;
+    final showBillsAsDashboard = currentUser?.isAccountant == true;
 
     final canViewAmcReminder = !simplifyNav &&
         (currentUser?.isSupport == true ||
@@ -121,21 +123,58 @@ class _Sidebar extends ConsumerWidget {
             currentUser?.isSupportHead == true);
 
     return Container(
-      width: 240,
-      decoration: const BoxDecoration(color: AppColors.primary),
-      padding: const EdgeInsets.symmetric(vertical: 20),
+      width: 260,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primaryDark,
+            AppColors.slate900,
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(4, 0),
+          ),
+        ],
+      ),
       child: Column(
         children: [
-          // Logo Area
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          // Logo Area - Enterprise styled
+          Container(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  width: 1,
+                ),
+              ),
+            ),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(8),
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primaryLight,
+                        AppColors.primary,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: const Icon(
                     LucideIcons.checkSquare,
@@ -143,137 +182,213 @@ class _Sidebar extends ConsumerWidget {
                     size: 20,
                   ),
                 ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'TallyCare',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                      color: Colors.white,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'TallyCare',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 20,
+                          color: Colors.white,
+                          letterSpacing: -0.5,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'Enterprise',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (enableNotifications) const NotificationBell(),
-                if (enableGlobalSearch)
-                  IconButton(
-                    icon: Icon(
-                      LucideIcons.search,
-                      size: 18,
-                      color: Colors.white.withValues(alpha: 0.8),
-                    ),
-                    tooltip: 'Search',
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (_) => const _GlobalSearchDialog(),
-                      );
-                    },
-                  ),
               ],
             ),
           ),
-          const SizedBox(height: 32),
+          // Search & Notifications
+          if (enableGlobalSearch || enableNotifications)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  if (enableGlobalSearch)
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (_) => const _GlobalSearchDialog(),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.1),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.search,
+                                size: 16,
+                                color: Colors.white.withValues(alpha: 0.5),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Search...',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white.withValues(alpha: 0.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (enableNotifications) ...[
+                    const SizedBox(width: 8),
+                    IconTheme(
+                      data: IconThemeData(
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                      child: const NotificationBell(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Column(
+                children: [
+                  // Navigation Items
+                  _NavItem(
+                    label: showBillsAsDashboard
+                        ? 'Bills'
+                        : (isSales
+                            ? 'Dashboard'
+                            : (showClaimTicketsLabel
+                                ? 'Claim Tickets'
+                                : 'Dashboard')),
+                    icon: showBillsAsDashboard
+                        ? LucideIcons.receipt
+                        : LucideIcons.layoutDashboard,
+                    path: showBillsAsDashboard
+                        ? '/accountant'
+                        : (isSales ? '/sales' : '/'),
+                    isActive: currentPath == '/' ||
+                        currentPath == '/admin' ||
+                        currentPath == '/support' ||
+                        currentPath == '/accountant' ||
+                        currentPath == '/sales',
+                  ),
+                  if (currentUser?.isAccountant != true)
+                    _NavItem(
+                      label: isSales ? 'My Tickets' : 'Tickets',
+                      icon: LucideIcons.ticket,
+                      path: '/tickets',
+                      isActive: currentPath.startsWith('/tickets') ||
+                          currentPath.startsWith('/ticket'),
+                    ),
+                  _NavItem(
+                    label: 'Customers',
+                    icon: LucideIcons.users,
+                    path: '/customers',
+                    isActive: currentPath.startsWith('/customers') ||
+                        currentPath.startsWith('/customer'),
+                  ),
+                  if (canViewAmcReminder)
+                    _NavItem(
+                      label: 'AMC Reminder',
+                      icon: LucideIcons.calendarClock,
+                      path: '/amc-reminder',
+                      isActive: currentPath.startsWith('/amc-reminder'),
+                    ),
+                  if (canViewBills && !showBillsAsDashboard)
+                    _NavItem(
+                      label: 'Bills',
+                      icon: LucideIcons.receipt,
+                      path: '/bills',
+                      isActive: currentPath.startsWith('/bills'),
+                    ),
+                  if (canViewPastTickets)
+                    _NavItem(
+                      label: 'Past Tickets',
+                      icon: LucideIcons.archive,
+                      path: '/past-tickets',
+                      isActive: currentPath == '/past-tickets',
+                    ),
+                  if (currentUser?.isAdmin == true ||
+                      currentUser?.isAccountant == true)
+                    _NavItem(
+                      label: 'Revenue',
+                      icon: LucideIcons.indianRupee,
+                      path: '/revenue',
+                      isActive: currentPath.startsWith('/revenue'),
+                    ),
+                  if (canViewSalesOpportunity)
+                    _NavItem(
+                      label: 'Sales Opportunity',
+                      icon: LucideIcons.trendingUp,
+                      path: '/sales-opportunity',
+                      isActive: currentPath.startsWith('/sales-opportunity'),
+                    ),
+                  if (canViewReports)
+                    _NavItem(
+                      label: 'Reports',
+                      icon: LucideIcons.barChart,
+                      path: '/reports',
+                      isActive: currentPath.startsWith('/reports'),
+                    ),
+                  if (currentUser?.isAdmin == true) ...[
+                    _NavItem(
+                      label: 'User Management',
+                      icon: LucideIcons.users,
+                      path: '/users',
+                      isActive: currentPath.startsWith('/users'),
+                    ),
+                  ],
+                  if (canViewDeals)
+                    _NavItem(
+                      label: 'Deals',
+                      icon: LucideIcons.briefcase,
+                      path: '/deals',
+                      isActive: currentPath.startsWith('/deals'),
+                    ),
+                  if (currentUser?.isAdmin == true)
+                    _NavItem(
+                      label: 'Settings',
+                      icon: LucideIcons.settings,
+                      path: '/settings',
+                      isActive: currentPath.startsWith('/settings'),
+                    ),
 
-          // Navigation Items
-          _NavItem(
-            label: showClaimTicketsLabel ? 'Claim Tickets' : 'Dashboard',
-            icon: LucideIcons.layoutDashboard,
-            path: '/',
-            isActive:
-                currentPath == '/' ||
-                currentPath == '/admin' ||
-                currentPath == '/support' ||
-                currentPath == '/accountant' ||
-                currentPath == '/accountant',
+                  const SizedBox(height: 16),
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: _UserProfile(),
+                  ),
+                ],
+              ),
+            ),
           ),
-          if (currentUser?.isAccountant != true)
-            _NavItem(
-              label: 'Tickets',
-              icon: LucideIcons.ticket,
-              path: '/tickets',
-              isActive: currentPath.startsWith('/tickets') ||
-                  currentPath.startsWith('/ticket'),
-            ),
-          _NavItem(
-            label: 'Customers',
-            icon: LucideIcons.users,
-            path: '/customers',
-            isActive:
-                currentPath.startsWith('/customers') ||
-                currentPath.startsWith('/customer'),
-          ),
-          if (canViewAmcReminder)
-            _NavItem(
-              label: 'AMC Reminder',
-              icon: LucideIcons.calendarClock,
-              path: '/amc-reminder',
-              isActive: currentPath.startsWith('/amc-reminder'),
-            ),
-          if (canViewBills)
-            _NavItem(
-              label: 'Bills',
-              icon: LucideIcons.receipt,
-              path: '/bills',
-              isActive: currentPath.startsWith('/bills'),
-            ),
-          if (canViewPastTickets)
-            _NavItem(
-              label: 'Past Tickets',
-              icon: LucideIcons.archive,
-              path: '/past-tickets',
-              isActive: currentPath == '/past-tickets',
-            ),
-          if (currentUser?.isAdmin == true ||
-              currentUser?.isAccountant == true)
-            _NavItem(
-              label: 'Revenue',
-              icon: LucideIcons.indianRupee,
-              path: '/revenue',
-              isActive: currentPath.startsWith('/revenue'),
-            ),
-          if (canViewSalesOpportunity)
-            _NavItem(
-              label: 'Sales Opportunity',
-              icon: LucideIcons.trendingUp,
-              path: '/sales-opportunity',
-              isActive: currentPath.startsWith('/sales-opportunity'),
-            ),
-          if (canViewReports)
-            _NavItem(
-              label: 'Reports',
-              icon: LucideIcons.barChart,
-              path: '/reports',
-              isActive: currentPath.startsWith('/reports'),
-            ),
-          if (currentUser?.isAdmin == true) ...[
-            _NavItem(
-              label: 'User Management',
-              icon: LucideIcons.users,
-              path: '/users',
-              isActive: currentPath.startsWith('/users'),
-            ),
-          ],
-          if (canViewDeals)
-            _NavItem(
-              label: 'Deals',
-              icon: LucideIcons.briefcase,
-              path: '/deals',
-              isActive: currentPath.startsWith('/deals'),
-            ),
-          if (currentUser?.isAdmin == true)
-            _NavItem(
-              label: 'Settings',
-              icon: LucideIcons.settings,
-              path: '/settings',
-              isActive: currentPath.startsWith('/settings'),
-            ),
-
-          const Spacer(),
-
-          // User Profile Stub
-          const Padding(padding: EdgeInsets.all(16), child: _UserProfile()),
         ],
       ),
     );
@@ -495,7 +610,7 @@ class _GlobalSearchDialogState extends ConsumerState<_GlobalSearchDialog> {
   }
 }
 
-class _NavItem extends StatelessWidget {
+class _NavItem extends StatefulWidget {
   final String label;
   final IconData icon;
   final String path;
@@ -509,37 +624,88 @@ class _NavItem extends StatelessWidget {
   });
 
   @override
+  State<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends State<_NavItem> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    final inactiveColor = Colors.white.withValues(alpha: 0.8);
-    return InkWell(
-      onTap: () => context.go(path),
-      child: Container(
-        width: double.infinity,
+    final inactiveColor = Colors.white.withValues(alpha: 0.6);
+    final hoverColor = Colors.white.withValues(alpha: 0.08);
+    final activeColor = AppColors.primaryLight;
+    
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: isActive
-              ? Colors.white.withValues(alpha: 0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 20,
-              color: isActive ? Colors.white : inactiveColor,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                color: isActive ? Colors.white : inactiveColor,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => context.go(widget.path),
+            borderRadius: BorderRadius.circular(10),
+            splashColor: Colors.white.withValues(alpha: 0.1),
+            highlightColor: Colors.white.withValues(alpha: 0.05),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: widget.isActive
+                    ? activeColor.withValues(alpha: 0.15)
+                    : (_isHovered ? hoverColor : Colors.transparent),
+                borderRadius: BorderRadius.circular(10),
+                border: widget.isActive
+                    ? Border.all(
+                        color: activeColor.withValues(alpha: 0.3),
+                        width: 1,
+                      )
+                    : null,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: widget.isActive
+                          ? activeColor.withValues(alpha: 0.2)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      widget.icon,
+                      size: 18,
+                      color: widget.isActive ? activeColor : inactiveColor,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      widget.label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: widget.isActive ? FontWeight.w600 : FontWeight.w500,
+                        color: widget.isActive ? Colors.white : inactiveColor,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ),
+                  if (widget.isActive)
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: activeColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -579,12 +745,16 @@ class _BottomNav extends ConsumerWidget {
 
     destinations.add(
       NavigationDestination(
-        icon: const Icon(LucideIcons.layoutDashboard),
-        selectedIcon: const Icon(
-          LucideIcons.layoutDashboard,
+        icon: Icon(
+          isAccountant ? LucideIcons.receipt : LucideIcons.layoutDashboard,
+        ),
+        selectedIcon: Icon(
+          isAccountant ? LucideIcons.receipt : LucideIcons.layoutDashboard,
           color: AppColors.primary,
         ),
-        label: renameDashboard ? 'Claim Tickets' : 'Dashboard',
+        label: isAccountant
+            ? 'Bills'
+            : (renameDashboard ? 'Claim Tickets' : 'Dashboard'),
       ),
     );
     navRoutes.add('/');
@@ -657,8 +827,12 @@ class _BottomNav extends ConsumerWidget {
         selectedIndex: _getSelectedIndex(currentPath, navRoutes, isAccountant),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         height: 64,
-        onDestinationSelected: (index) =>
-            _handleNavigation(context, index, navRoutes),
+        onDestinationSelected: (index) => _handleNavigation(
+          context,
+          index,
+          navRoutes,
+          isAccountant: isAccountant,
+        ),
         destinations: destinations,
       ),
     );
@@ -667,13 +841,14 @@ class _BottomNav extends ConsumerWidget {
   void _handleNavigation(
     BuildContext context,
     int index,
-    List<String> navRoutes,
-  ) {
+    List<String> navRoutes, {
+    bool isAccountant = false,
+  }) {
     final target = navRoutes[index];
     if (target == '/profile') {
       context.push(target);
     } else if (target == '/') {
-      context.go('/');
+      context.go(isAccountant ? '/accountant' : '/');
     } else {
       context.go(target);
     }
@@ -763,8 +938,8 @@ class _UserProfile extends ConsumerWidget {
           children: [
             const CircleAvatar(
               radius: 16,
-              backgroundColor: AppColors.slate200,
-              child: Icon(Icons.person, size: 16, color: AppColors.slate500),
+              backgroundColor: Colors.white10,
+              child: Icon(Icons.person, size: 16, color: Colors.white70),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -776,15 +951,15 @@ class _UserProfile extends ConsumerWidget {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.slate900,
+                      color: Colors.white,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
                     user?.role ?? 'Role',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
-                      color: AppColors.slate500,
+                      color: Colors.white.withValues(alpha: 0.5),
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),

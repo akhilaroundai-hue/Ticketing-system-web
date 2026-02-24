@@ -9,6 +9,7 @@ import '../../../customers/presentation/providers/customer_provider.dart';
 import '../../../customers/domain/entities/customer.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/ticket_card_with_amc.dart';
+import '../widgets/animated_create_ticket_fab.dart';
 import '../widgets/create_ticket_dialog.dart';
 
 class SupportDashboardPage extends ConsumerWidget {
@@ -24,19 +25,13 @@ class SupportDashboardPage extends ConsumerWidget {
       currentPath: '/support',
       child: Scaffold(
         backgroundColor: AppColors.slate50,
-        floatingActionButton: FloatingActionButton.extended(
+        floatingActionButton: AnimatedCreateTicketFab(
           onPressed: () {
             showDialog(
               context: context,
               builder: (context) => const CreateTicketDialog(isSupport: true),
             );
           },
-          icon: const Icon(LucideIcons.plus, color: Colors.white),
-          label: const Text(
-            'Create Ticket',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: AppColors.primary,
         ),
         body: ticketsAsync.when(
           data: (allTickets) {
@@ -130,8 +125,8 @@ class SupportDashboardPage extends ConsumerWidget {
 
             final normalTickets = _filterTickets(false);
             final amcTickets = _filterTickets(true);
+            final forceClaimButton = currentUser?.isSupportHead == true;
             final isCustomersLoading = customersAsync.isLoading;
-
             final unclaimedSection = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -169,6 +164,7 @@ class SupportDashboardPage extends ConsumerWidget {
                               subtitle: 'Regular tickets',
                               tickets: normalTickets,
                               isAmc: false,
+                              forceClaimButton: forceClaimButton,
                             ),
                           ),
                           const SizedBox(width: 24),
@@ -179,6 +175,7 @@ class SupportDashboardPage extends ConsumerWidget {
                               subtitle: 'Priority tickets',
                               tickets: amcTickets,
                               isAmc: true,
+                              forceClaimButton: forceClaimButton,
                             ),
                           ),
                         ],
@@ -229,6 +226,7 @@ class SupportDashboardPage extends ConsumerWidget {
     required String subtitle,
     required List<Ticket> tickets,
     required bool isAmc,
+    required bool forceClaimButton,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,7 +236,12 @@ class SupportDashboardPage extends ConsumerWidget {
           subtitle: subtitle,
         ),
         const SizedBox(height: 12),
-        _buildTicketList(context, tickets, isAmc: isAmc),
+        _buildTicketList(
+          context,
+          tickets,
+          isAmc: isAmc,
+          forceClaimButton: forceClaimButton,
+        ),
       ],
     );
   }
@@ -247,6 +250,7 @@ class SupportDashboardPage extends ConsumerWidget {
     BuildContext context,
     List<Ticket> tickets, {
     required bool isAmc,
+    required bool forceClaimButton,
   }) {
     if (tickets.isEmpty) {
       return EmptyStateCard(
@@ -270,6 +274,7 @@ class SupportDashboardPage extends ConsumerWidget {
             child: TicketCardWithAmc(
               ticket: ticket,
               layout: TicketCardLayout.compact,
+              forceClaimButton: forceClaimButton,
             ),
           ),
         ),

@@ -97,7 +97,7 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
         // Header Area with Segmented Control
         Container(
           color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           child: Column(
             children: [
               Row(
@@ -110,26 +110,25 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
                       const Text(
                         'Tickets',
                         style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.slate900,
-                          letterSpacing: -0.5,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.slate800,
+                          letterSpacing: -0.3,
                         ),
                       ),
-                      const SizedBox(height: 4),
                       Text(
                         'Manage your queues',
-                        style: TextStyle(fontSize: 13, color: AppColors.slate500),
+                        style: TextStyle(fontSize: 11, color: AppColors.slate500),
                       ),
                     ],
                   ),
-                  // Modern Segmented Control
+                  // Compact Segmented Control
                   Container(
-                    height: 40,
-                    padding: const EdgeInsets.all(4),
+                    height: 32,
+                    padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
                       color: AppColors.slate100,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                       border: Border.all(color: AppColors.slate200),
                     ),
                     child: TabBar(
@@ -138,12 +137,12 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
                       labelColor: AppColors.slate900,
                       unselectedLabelColor: AppColors.slate500,
                       labelStyle: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 12,
                       ),
                       indicator: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(4),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.04),
@@ -154,7 +153,7 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
                       ),
                       dividerColor: Colors.transparent,
                       indicatorSize: TabBarIndicatorSize.tab,
-                      labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 12),
                       tabs: const [
                         Tab(text: 'Normal'),
                         Tab(text: 'AMC / Priority'),
@@ -163,7 +162,7 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -194,35 +193,9 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
   }) {
     return Column(
       children: [
-        // Secondary Tabs (Today / Pending)
-        Container(
-          width: double.infinity,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(
-              bottom: BorderSide(color: AppColors.slate200),
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          child: Row(
-            children: [
-              Icon(LucideIcons.listChecks, size: 16, color: AppColors.primary),
-              const SizedBox(width: 10),
-              const Text(
-                'All Tickets',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: AppColors.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
             child: TicketsView(
               key: ValueKey('tickets_${category.name}_pending'),
               showAllTickets: true,
@@ -329,6 +302,7 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
                           showCustomerTabs: false,
                           forcedCustomerCategory: CustomerCategoryFilter.normal,
                           excludeCompleted: true,
+                          includeBilledInCompleted: false,
                         ),
                       ),
                     ],
@@ -353,6 +327,7 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
                           forcedCustomerCategory:
                               CustomerCategoryFilter.priority,
                           excludeCompleted: true,
+                          includeBilledInCompleted: false,
                         ),
                       ),
                     ],
@@ -914,6 +889,7 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
   }) {
     return Consumer(
       builder: (context, ref, child) {
+        final currentUser = ref.watch(authProvider);
         // Filter tickets based on customer AMC status
         final filteredTickets = <Ticket>[];
 
@@ -981,6 +957,7 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
                     TicketCardWithAmc(
                       ticket: ticket,
                       layout: TicketCardLayout.compact,
+                      forceClaimButton: currentUser?.isSupportHead == true,
                     ),
                     if (canDismiss)
                       Positioned(
@@ -1078,10 +1055,12 @@ class _TicketsPageState extends ConsumerState<TicketsPage>
   }
 }
 
-bool _isCompletedStatus(String? status) {
+bool _isCompletedStatus(String? status, {bool includeBilled = true}) {
   if (status == null) return false;
   final normalized = status.trim().toLowerCase();
-  return const {'resolved', 'closed', 'billprocessed'}.contains(normalized);
+  if (normalized == 'resolved') return true;
+  if (!includeBilled) return false;
+  return const {'closed', 'billprocessed'}.contains(normalized);
 }
 
 class AgentAssignmentSidebar extends ConsumerWidget {
@@ -1599,6 +1578,7 @@ class TicketsView extends ConsumerStatefulWidget {
   final bool showOnlyUnclaimed;
   final bool showOnlyMine;
   final bool excludeCompleted;
+  final bool includeBilledInCompleted;
   final TicketQuickView? quickView;
   final bool showCustomerTabs;
   final CustomerCategoryFilter initialCustomerCategory;
@@ -1612,6 +1592,7 @@ class TicketsView extends ConsumerStatefulWidget {
     this.showOnlyUnclaimed = false,
     this.showOnlyMine = false,
     this.excludeCompleted = false,
+    this.includeBilledInCompleted = true,
     this.quickView,
     this.showCustomerTabs = true,
     this.initialCustomerCategory = CustomerCategoryFilter.normal,
@@ -1804,21 +1785,52 @@ class _TicketsViewState extends ConsumerState<TicketsView>
     return Padding(
       padding: widget.forcedCustomerCategory != null
           ? EdgeInsets.zero
-          : const EdgeInsets.all(24),
+          : const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (widget.showAllTickets) ...[
-            SectionHeader(
-              title: 'All Tickets',
-              subtitle: 'Support queue overview',
-              trailing: AppButton.ghost(
-                label: 'Clear all filters',
-                icon: LucideIcons.x,
-                onPressed: _clearAllFilters,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'All Tickets',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.slate800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Support queue overview',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.slate500,
+                      ),
+                    ),
+                  ],
+                ),
+                TextButton.icon(
+                  onPressed: _clearAllFilters,
+                  icon: Icon(LucideIcons.x, size: 14, color: AppColors.slate500),
+                  label: Text(
+                    'Clear all filters',
+                    style: TextStyle(fontSize: 12, color: AppColors.slate500),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
           ],
           if (shouldShowCustomerTabs) ...[
             _buildCustomerCategoryTabs(compact: !widget.showAllTickets),
@@ -1832,14 +1844,33 @@ class _TicketsViewState extends ConsumerState<TicketsView>
                   width: isNarrow ? double.infinity : 320,
                   child: const TicketSearchField(),
                 );
-                final filterButton = AppButton.secondary(
-                  label: _filtersVisible ? 'Hide filters' : 'Show filters',
-                  icon: LucideIcons.slidersHorizontal,
+                final filterButton = TextButton.icon(
                   onPressed: () {
                     setState(() {
                       _filtersVisible = !_filtersVisible;
                     });
                   },
+                  icon: Icon(
+                    LucideIcons.slidersHorizontal,
+                    size: 14,
+                    color: _filtersVisible ? AppColors.primary : AppColors.slate500,
+                  ),
+                  label: Text(
+                    _filtersVisible ? 'Hide filters' : 'Show filters',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _filtersVisible ? AppColors.primary : AppColors.slate600,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    backgroundColor: _filtersVisible 
+                        ? AppColors.primary.withValues(alpha: 0.08)
+                        : AppColors.slate100,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
                 );
 
                 if (isNarrow) {
@@ -2027,7 +2058,12 @@ class _TicketsViewState extends ConsumerState<TicketsView>
 
                 if (widget.excludeCompleted) {
                   tickets = tickets
-                      .where((t) => !_isCompletedStatus(t.status))
+                      .where(
+                        (t) => !_isCompletedStatus(
+                          t.status,
+                          includeBilled: widget.includeBilledInCompleted,
+                        ),
+                      )
                       .toList();
                 }
 
@@ -2064,12 +2100,20 @@ class _TicketsViewState extends ConsumerState<TicketsView>
                         .toList();
                   } else if (qv == TicketQuickView.pending) {
                     tickets = tickets
-                        .where((t) => !_isCompletedStatus(t.status))
+                        .where(
+                          (t) => !_isCompletedStatus(
+                            t.status,
+                            includeBilled: widget.includeBilledInCompleted,
+                          ),
+                        )
                         .toList();
                   } else if (qv == TicketQuickView.resolvedToday) {
                     final today = DateTime.now();
                     tickets = tickets.where((t) {
-                      if (!_isCompletedStatus(t.status)) {
+                      if (!_isCompletedStatus(
+                        t.status,
+                        includeBilled: widget.includeBilledInCompleted,
+                      )) {
                         return false;
                       }
                       final updatedAt = t.updatedAt;
@@ -2083,7 +2127,12 @@ class _TicketsViewState extends ConsumerState<TicketsView>
 
                     tickets =
                         tickets.where((t) {
-                          if (_isCompletedStatus(t.status)) return false;
+                          if (_isCompletedStatus(
+                            t.status,
+                            includeBilled: widget.includeBilledInCompleted,
+                          )) {
+                            return false;
+                          }
                           final due = _computeTargetDueForList(
                             t,
                             advancedSettings,
@@ -2155,7 +2204,10 @@ class _TicketsViewState extends ConsumerState<TicketsView>
                   tickets = tickets.where((t) {
                     final due = _computeTargetDueForList(t, advancedSettings);
                     if (due == null) return false;
-                    if (_isCompletedStatus(t.status)) {
+                    if (_isCompletedStatus(
+                      t.status,
+                      includeBilled: widget.includeBilledInCompleted,
+                    )) {
                       return false;
                     }
                     final minutes = due.difference(now).inMinutes;
@@ -2196,26 +2248,46 @@ class _TicketsViewState extends ConsumerState<TicketsView>
                   }
                 }
 
-                if (effectiveSortOption == 'sla') {
-                  tickets.sort(compareUrgency);
-                } else if (effectiveSortOption == 'newest') {
-                  tickets.sort(
-                    (a, b) => (b.createdAt ?? DateTime(0)).compareTo(
-                      a.createdAt ?? DateTime(0),
-                    ),
-                  );
-                } else if (effectiveSortOption == 'oldest') {
-                  tickets.sort(
-                    (a, b) => (a.createdAt ?? DateTime(0)).compareTo(
-                      b.createdAt ?? DateTime(0),
-                    ),
-                  );
-                } else if (effectiveSortOption == 'priority') {
-                  tickets.sort(
-                    (a, b) => priorityRank(
-                      b.priority,
-                    ).compareTo(priorityRank(a.priority)),
-                  );
+                int baseComparator(Ticket a, Ticket b) {
+                  switch (effectiveSortOption) {
+                    case 'sla':
+                      return compareUrgency(a, b);
+                    case 'newest':
+                      return (b.createdAt ?? DateTime(0)).compareTo(
+                        a.createdAt ?? DateTime(0),
+                      );
+                    case 'oldest':
+                      return (a.createdAt ?? DateTime(0)).compareTo(
+                        b.createdAt ?? DateTime(0),
+                      );
+                    case 'priority':
+                      return priorityRank(
+                        b.priority,
+                      ).compareTo(priorityRank(a.priority));
+                    default:
+                      return (a.createdAt ?? DateTime(0)).compareTo(
+                        b.createdAt ?? DateTime(0),
+                      );
+                  }
+                }
+
+                bool isBillRaisedStatus(String? status) {
+                  if (status == null) return false;
+                  return status.trim().toLowerCase() == 'billraised';
+                }
+
+                bool isBilledStatus(String? status) {
+                  if (status == null) return false;
+                  final normalized = status.trim().toLowerCase();
+                  return const {'closed', 'billprocessed'}.contains(normalized);
+                }
+
+                int workQueueRank(Ticket ticket) {
+                  if (isBilledStatus(ticket.status)) return 3;
+                  if (isBillRaisedStatus(ticket.status)) return 2;
+                  final isClaimed =
+                      ticket.assignedTo != null && ticket.assignedTo!.isNotEmpty;
+                  return isClaimed ? 0 : 1;
                 }
 
                 if (tickets.isEmpty) {
@@ -2234,12 +2306,17 @@ class _TicketsViewState extends ConsumerState<TicketsView>
                   );
                 }
 
-                // Enforce FIFO queue (oldest at top)
-                tickets.sort(
-                  (a, b) => (a.createdAt ?? DateTime(0)).compareTo(
-                    b.createdAt ?? DateTime(0),
-                  ),
-                );
+                tickets.sort((a, b) {
+                  final queueRank =
+                      workQueueRank(a).compareTo(workQueueRank(b));
+                  if (queueRank != 0) return queueRank;
+
+                  final baseComparison = baseComparator(a, b);
+                  if (baseComparison != 0) return baseComparison;
+
+                  // Provide a deterministic fallback to avoid flicker.
+                  return a.ticketId.compareTo(b.ticketId);
+                });
 
                 return ListView.separated(
                   padding: const EdgeInsets.only(bottom: 24),
@@ -2249,6 +2326,7 @@ class _TicketsViewState extends ConsumerState<TicketsView>
                     return TicketCardWithAmc(
                       ticket: tickets[index],
                       layout: TicketCardLayout.standard,
+                      forceClaimButton: currentUser?.isSupportHead == true,
                       highlightPriorityCustomer:
                           currentUser?.isSupport == true &&
                           widget.showAllTickets == false &&

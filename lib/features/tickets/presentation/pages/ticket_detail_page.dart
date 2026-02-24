@@ -5,12 +5,12 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/design_system/design_system.dart';
-import '../../../customers/domain/entities/customer.dart';
 import '../../../customers/presentation/widgets/customer_info_card.dart';
 import '../../../customers/presentation/providers/customer_activities_provider.dart';
 import '../../../customers/presentation/providers/customer_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../dashboard/presentation/providers/app_settings_provider.dart';
+import '../../../tickets/domain/entities/ticket.dart';
 
 import '../providers/ticket_provider.dart';
 import '../widgets/comments_section.dart';
@@ -20,7 +20,12 @@ import 'edit_ticket_page.dart';
 
 class TicketDetailPage extends ConsumerStatefulWidget {
   final String ticketId;
-  const TicketDetailPage({super.key, required this.ticketId});
+  final bool autoClaim;
+  const TicketDetailPage({
+    super.key,
+    required this.ticketId,
+    this.autoClaim = false,
+  });
 
   @override
   ConsumerState<TicketDetailPage> createState() => _TicketDetailPageState();
@@ -63,33 +68,45 @@ String _agentLoadLabel(int count) {
   return 'Handling $count tickets';
 }
 
-const Set<String> _autoStartStatuses = {
-  'New',
-  'Open',
-  'Waiting for Customer',
-};
-
 class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
+  bool _didAutoClaim = false;
+
   Future<void> _updateStatus(String newStatus) async {
-    final error = await ref
+    await ref
         .read(ticketStatusUpdaterProvider.notifier)
         .updateStatus(widget.ticketId, newStatus);
+  }
+
+  Future<void> _claimTicket(Ticket ticket) async {
+    final currentUser = ref.read(authProvider);
+    if (currentUser == null) return;
+
+    final success = await ref
+        .read(ticketAssignerProvider.notifier)
+        .assignTicket(ticket.ticketId, currentUser.id);
 
     if (!mounted) return;
 
-    final success = error == null;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          success
-              ? 'Status updated to $newStatus'
-              : 'Failed to update status: $error',
-        ),
-        backgroundColor: success ? AppColors.success : AppColors.error,
-      ),
-    );
+    if (success) {
+      // Keep it simple: claim only. No auto status changes or manual invalidation.
+    }
   }
+
+  void _maybeAutoClaim(Ticket ticket, Agent? currentUser) {
+    if (_didAutoClaim || !widget.autoClaim) return;
+
+    final canClaim = currentUser?.isSupport == true ||
+        currentUser?.isSupportHead == true ||
+        currentUser?.isAgent == true;
+    final isUnassigned =
+        ticket.assignedTo == null || ticket.assignedTo!.isEmpty;
+
+    _didAutoClaim = true;
+    if (canClaim && isUnassigned) {
+      _claimTicket(ticket);
+    }
+  }
+
 
   Future<void> _openScreenshot(String url) async {
     final uri = Uri.tryParse(url);
@@ -354,38 +371,40 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
           backgroundColor: Colors.white,
           elevation: 0,
           centerTitle: false,
-          titleSpacing: 24,
-          toolbarHeight: 72,
-          title: const Column(
+          titleSpacing: 20,
+          toolbarHeight: 60,
+          title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Ticket Details',
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: AppColors.slate900,
                 ),
               ),
-              SizedBox(height: 2),
               Text(
                 'Conversation & history',
-                style: TextStyle(fontSize: 12, color: AppColors.slate500),
+                style: TextStyle(fontSize: 11, color: AppColors.slate500),
               ),
             ],
           ),
           actions: [
             if (canManageAssignment)
               IconButton(
-                icon: const Icon(LucideIcons.userPlus, size: 20),
+                icon: const Icon(LucideIcons.userPlus, size: 18),
                 tooltip: 'Assign Support Head',
                 onPressed: _showAssignDialog,
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(8),
               ),
             if (isAdmin || currentUser?.isSupportHead == true)
               PopupMenuButton<String>(
-                icon: const Icon(LucideIcons.moreVertical, size: 20),
+                icon: const Icon(LucideIcons.moreVertical, size: 18),
                 tooltip: 'Change Status',
                 onSelected: _updateStatus,
+                padding: EdgeInsets.zero,
                 itemBuilder: (context) {
                   const allStatuses = [
                     'New',
@@ -412,6 +431,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                       .toList();
                 },
               ),
+            const SizedBox(width: 8),
           ],
         ),
         body: ticketsAsync.when(
@@ -420,6 +440,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
               (t) => t.ticketId == widget.ticketId,
               orElse: () => tickets.first,
             );
+            _maybeAutoClaim(ticket, currentUser);
             final agentsAsync = ref.watch(agentsListProvider);
             final customerAsync = ref.watch(
               customerProvider(ticket.customerId),
@@ -438,7 +459,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
             );
 
             return SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -449,160 +470,118 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                          padding: const EdgeInsets.all(16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
                                     child: Text(
                                       ticket.title,
                                       style: const TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
                                         color: AppColors.slate900,
+                                        height: 1.3,
                                       ),
                                     ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(LucideIcons.edit2, size: 20),
-                                    onPressed: () async {
-                                      final success = await Navigator.push<bool>(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              EditTicketPage(ticket: ticket),
-                                        ),
-                                      );
-
-                                      if (!mounted) return;
-                                      if (success == true) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Ticket updated successfully',
-                                            ),
-                                            backgroundColor: AppColors.success,
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    tooltip: 'Edit Ticket',
-                                    color: AppColors.slate600,
                                   ),
                                   const SizedBox(width: 12),
                                   _buildStatusBadge(ticket.status),
-                                  if ([
-                                    'BillRaised',
-                                    'BillProcessed',
-                                    'Resolved',
-                                    'Closed',
-                                  ].contains(ticket.status)) ...[
-                                    const SizedBox(width: 12),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.slate100,
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: AppColors.slate200),
-                                      ),
-                                      child: Text(
-                                        'Bill Amount: ₹${ticket.billAmount ?? 0}',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppColors.slate700,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
                                 ],
                               ),
-                              const SizedBox(height: 16),
-                              if ((ticket.screenshotUrl ?? '').isNotEmpty)
+                              const SizedBox(height: 12),
+                              if ((ticket.screenshotUrl ?? '').isNotEmpty) ...[
                                 _buildScreenshotSection(ticket.screenshotUrl!),
-                              const SizedBox(height: 16),
+                                const SizedBox(height: 12),
+                              ],
                               Row(
                                 children: [
+                                  // Created by
                                   Icon(
                                     LucideIcons.user,
-                                    size: 16,
-                                    color: AppColors.slate500,
+                                    size: 14,
+                                    color: AppColors.slate400,
                                   ),
-                                  const SizedBox(width: 8),
-                                  agentsAsync.when(
-                                    data: (agents) {
-                                      final idToName = <String, String>{};
-                                      final usernameToName = <String, String>{};
-                                      for (final a in agents) {
-                                        final id = a['id'] as String?;
-                                        final username = a['username'] as String?;
-                                        final name =
-                                            (a['full_name'] ?? a['username'] ?? id)
-                                                as String?;
-                                        if (id != null && name != null) {
-                                          idToName[id] = name;
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: agentsAsync.when(
+                                      data: (agents) {
+                                        final idToName = <String, String>{};
+                                        final usernameToName = <String, String>{};
+                                        for (final a in agents) {
+                                          final id = a['id'] as String?;
+                                          final username = a['username'] as String?;
+                                          final name =
+                                              (a['full_name'] ?? a['username'] ?? id)
+                                                  as String?;
+                                          if (id != null && name != null) {
+                                            idToName[id] = name;
+                                          }
+                                          if (username != null && name != null) {
+                                            usernameToName[username] = name;
+                                          }
                                         }
-                                        if (username != null && name != null) {
-                                          usernameToName[username] = name;
-                                        }
-                                      }
 
-                                      final isSupportHeadCreator =
-                                          idToName.containsKey(ticket.createdBy) ||
-                                          usernameToName.containsKey(
-                                            ticket.createdBy,
+                                        final isSupportHeadCreator =
+                                            idToName.containsKey(ticket.createdBy) ||
+                                            usernameToName.containsKey(
+                                              ticket.createdBy,
+                                            );
+
+                                        if (isSupportHeadCreator) {
+                                          final createdByDisplay =
+                                              idToName[ticket.createdBy] ??
+                                              usernameToName[ticket.createdBy] ??
+                                              ticket.createdBy;
+                                          return Text(
+                                            createdByDisplay,
+                                            style: TextStyle(color: AppColors.slate600, fontSize: 13),
+                                            overflow: TextOverflow.ellipsis,
                                           );
+                                        }
 
-                                      if (isSupportHeadCreator) {
-                                        final createdByDisplay =
-                                            idToName[ticket.createdBy] ??
-                                            usernameToName[ticket.createdBy] ??
-                                            ticket.createdBy;
+                                        // If not an agent, show Company Name
                                         return Text(
-                                          createdByDisplay,
-                                          style: TextStyle(color: AppColors.slate600),
+                                          customerCompanyName ?? ticket.createdBy,
+                                          style: const TextStyle(
+                                            color: AppColors.slate900,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 13,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
                                         );
-                                      }
-
-                                      // If not an agent, show Company Name
-                                      return Text(
-                                        customerCompanyName ?? ticket.createdBy,
-                                        style: const TextStyle(
-                                          color: AppColors.slate900,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      );
-                                    },
-                                    loading: () => Text(
-                                      ticket.createdBy,
-                                      style: TextStyle(color: AppColors.slate600),
-                                    ),
-                                    error: (_, __) => Text(
-                                      ticket.createdBy,
-                                      style: TextStyle(color: AppColors.slate600),
+                                      },
+                                      loading: () => Text(
+                                        ticket.createdBy,
+                                        style: TextStyle(color: AppColors.slate600, fontSize: 13),
+                                      ),
+                                      error: (_, __) => Text(
+                                        ticket.createdBy,
+                                        style: TextStyle(color: AppColors.slate600, fontSize: 13),
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 24),
+                                  const SizedBox(width: 16),
+                                  // Created time
                                   Icon(
                                     LucideIcons.clock,
-                                    size: 16,
-                                    color: AppColors.slate500,
+                                    size: 14,
+                                    color: AppColors.slate400,
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: 6),
                                   Text(
                                     ticket.createdAt != null
                                         ? timeago.format(ticket.createdAt!)
                                         : 'Unknown',
-                                    style: TextStyle(color: AppColors.slate600),
+                                    style: TextStyle(color: AppColors.slate500, fontSize: 13),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 8),
+                              // Assignee row
                               agentsAsync.when(
                                 data: (agents) {
                                   final idToName = <String, String>{};
@@ -625,54 +604,89 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                     children: [
                                       Icon(
                                         LucideIcons.userCheck,
-                                        size: 16,
-                                        color: AppColors.slate500,
+                                        size: 14,
+                                        color: AppColors.slate400,
                                       ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'Assigned to: $assigneeName',
-                                          style: TextStyle(color: AppColors.slate600),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Assigned to: ',
+                                        style: TextStyle(color: AppColors.slate500, fontSize: 13),
+                                      ),
+                                      Text(
+                                        assigneeName,
+                                        style: TextStyle(
+                                          color: AppColors.slate700,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
-                                      if (canManageAssignment)
-                                        TextButton.icon(
-                                          onPressed: _showAssignDialog,
-                                          icon: const Icon(
-                                            LucideIcons.refreshCw,
-                                            size: 16,
-                                          ),
-                                          label: Text(
-                                            assigneeName == 'Unassigned'
-                                                ? 'Assign'
-                                                : 'Change',
+                                      if (canManageAssignment) ...[
+                                        const SizedBox(width: 4),
+                                        InkWell(
+                                          onTap: _showAssignDialog,
+                                          borderRadius: BorderRadius.circular(4),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(4),
+                                            child: Text(
+                                              assigneeName == 'Unassigned'
+                                                  ? 'Assign'
+                                                  : 'Change',
+                                              style: TextStyle(
+                                                color: AppColors.primary,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
                                           ),
                                         ),
+                                      ],
                                     ],
                                   );
                                 },
                                 loading: () => const SizedBox.shrink(),
                                 error: (_, __) => const SizedBox.shrink(),
                               ),
-                              const SizedBox(height: 16),
-                              const Divider(),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'Description',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16,
-                                  color: AppColors.slate900,
+                              
+                              if ([
+                                'BillRaised',
+                                'BillProcessed',
+                                'Resolved',
+                                'Closed',
+                              ].contains(ticket.status)) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.slate100,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.slate200),
+                                  ),
+                                  child: Text(
+                                    'Bill Amount: ₹${ticket.billAmount ?? 0}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.slate700,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
+                              ],
+
+                              const SizedBox(height: 12),
+                              const Divider(height: 1),
+                              const SizedBox(height: 12),
+                              
+                              // Description
                               if ((ticket.description ?? '').trim().isEmpty)
                                 const Text(
                                   'No description provided',
                                   style: TextStyle(
-                                    fontSize: 15,
-                                    height: 1.5,
-                                    color: AppColors.slate700,
+                                    fontSize: 14,
+                                    color: AppColors.slate500,
+                                    fontStyle: FontStyle.italic,
                                   ),
                                 )
                               else
@@ -683,40 +697,47 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                         Theme.of(context),
                                       ).copyWith(
                                         p: const TextStyle(
-                                          fontSize: 15,
+                                          fontSize: 14,
                                           height: 1.5,
                                           color: AppColors.slate700,
                                         ),
                                       ),
                                 ),
+                              
                               const SizedBox(height: 16),
-                              Row(
+                              
+                              // Tags row
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
                                 children: [
                                   _buildInfoChip(
                                     icon: LucideIcons.flag,
                                     label: 'Priority',
-                                    value: ticket.priority ?? 'Unassigned',
+                                    value: ticket.priority ?? 'Normal',
                                     color: _getPriorityColor(ticket.priority),
+                                    compact: true,
                                   ),
-                                  const SizedBox(width: 12),
                                   if (ticket.category != null)
                                     _buildInfoChip(
                                       icon: LucideIcons.tag,
                                       label: 'Category',
                                       value: ticket.category!,
                                       color: AppColors.info,
+                                      compact: true,
                                     ),
                                   const SizedBox(width: 12),
                                   if (advancedSettings != null)
                                     _buildInfoChip(
                                       icon: LucideIcons.clock,
-                                      label: 'Response time target',
+                                      label: 'Response time',
                                       value: _formatResponseTimeTarget(
                                         advancedSettings.slaMinutesForPriority(
                                           ticket.priority,
                                         ),
                                       ),
-                                      color: AppColors.slate600,
+                                      color: AppColors.slate500,
+                                      compact: true,
                                     ),
                                 ],
                               ),
@@ -726,7 +747,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
 
                   if ((ticket.assignedTo == null ||
                           ticket.assignedTo!.isEmpty) &&
@@ -736,59 +757,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                     AppButton(
                       label: 'Claim Ticket',
                       icon: LucideIcons.userCheck,
-                      onPressed: () async {
-                        final messenger = ScaffoldMessenger.of(context);
-                        final currentUser = ref.read(authProvider);
-                        if (currentUser == null) return;
-
-                        final success = await ref
-                            .read(ticketAssignerProvider.notifier)
-                            .assignTicket(ticket.ticketId, currentUser.id);
-
-                        if (!mounted) return;
-
-                        if (success) {
-                          ref.invalidate(ticketsStreamProvider);
-                          if (context.mounted) {
-                            String message = 'Ticket claimed successfully';
-                            Color snackColor = AppColors.success;
-
-                            if (_autoStartStatuses.contains(ticket.status)) {
-                              final statusError = await ref
-                                  .read(
-                                    ticketStatusUpdaterProvider.notifier,
-                                  )
-                                  .updateStatus(
-                                    ticket.ticketId,
-                                    'In Progress',
-                                  );
-
-                              if (statusError != null) {
-                                message =
-                                    'Ticket claimed but failed to start work: $statusError';
-                                snackColor = AppColors.error;
-                              } else {
-                                message =
-                                    'Ticket claimed and moved to In Progress';
-                              }
-                            }
-
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(message),
-                                backgroundColor: snackColor,
-                              ),
-                            );
-                          }
-                        } else {
-                          messenger.showSnackBar(
-                            const SnackBar(
-                              content: Text('Failed to claim ticket'),
-                              backgroundColor: AppColors.error,
-                            ),
-                          );
-                        }
-                      },
+                      onPressed: () => _claimTicket(ticket),
                     ),
                   if (ticket.assignedTo == currentUser?.id &&
                       ![
@@ -801,20 +770,6 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                       spacing: 12,
                       runSpacing: 8,
                       children: [
-                        // Status Transitions
-                        if (ticket.status == 'In Progress')
-                          AppButton.secondary(
-                            label: 'Put On Hold',
-                            icon: LucideIcons.pauseCircle,
-                            onPressed: () => _updateStatus('On Hold'),
-                          ),
-                        if (ticket.status == 'On Hold')
-                          AppButton.secondary(
-                            label: 'Resume Work',
-                            icon: LucideIcons.playCircle,
-                            onPressed: () => _updateStatus('In Progress'),
-                          ),
-
                         // Resolve Actions
                         AppButton.secondary(
                           label: 'Resolve',
@@ -826,7 +781,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                           label: 'Resolve & Raise Bill',
                           icon: LucideIcons.fileCheck,
                           onPressed: () async {
-                            final shouldResolve = await showDialog<bool>(
+                            await showDialog<bool>(
                               context: context,
                               builder: (context) => ResolveBillDialog(
                                 ticketId: ticket.ticketId,
@@ -841,17 +796,6 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                             );
 
                             if (!mounted) return;
-                            if (shouldResolve == true) {
-                              // ignore: use_build_context_synchronously
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Ticket resolved and bill raised successfully',
-                                  ),
-                                  backgroundColor: AppColors.success,
-                                ),
-                              );
-                            }
                           },
                         ),
                       ],
@@ -923,7 +867,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                         children: [
                                           const Icon(
                                             LucideIcons.user,
-                                            size: 14,
+                                            size: 13,
                                             color: AppColors.slate600,
                                           ),
                                           const SizedBox(width: 8),
@@ -938,7 +882,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 4),
                                       ref
                                           .watch(
                                             ticketFirstAssignedToProvider(
@@ -955,7 +899,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                                 children: [
                                                   const Icon(
                                                     LucideIcons.userCheck,
-                                                    size: 14,
+                                                    size: 13,
                                                     color: AppColors.slate600,
                                                   ),
                                                   const SizedBox(width: 8),
@@ -977,12 +921,12 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                             error: (_, __) =>
                                                 const SizedBox.shrink(),
                                           ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 4),
                                       Row(
                                         children: [
                                           const Icon(
                                             LucideIcons.userCheck,
-                                            size: 14,
+                                            size: 13,
                                             color: AppColors.slate600,
                                           ),
                                           const SizedBox(width: 8),
@@ -1032,6 +976,8 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                       children: [
                                         ...headerRows,
                                         const SizedBox(height: 12),
+                                        const Divider(height: 1),
+                                        const SizedBox(height: 12),
                                         ...sortedEvents.map((e) {
                                           DateTime? parse(dynamic v) {
                                             if (v is DateTime) return v;
@@ -1045,7 +991,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                           final toId = e['to'] as String?;
                                           final assignedById =
                                               e['assigned_by'] as String?;
-                                          final note = e['note'] as String?;
+                                          // unused note variable removed
 
                                           final completed =
                                               (e['completed'] as bool?) == true;
@@ -1056,19 +1002,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                             e['completed_at'],
                                           );
 
-                                          final fromName =
-                                              (fromId == null || fromId.isEmpty)
-                                              ? null
-                                              : resolveDisplayName(fromId);
-                                          final toName = toId == null
-                                              ? 'Unknown'
-                                              : resolveDisplayName(toId);
-                                          final assignedByName =
-                                              assignedById == null
-                                              ? 'Unknown'
-                                              : resolveDisplayName(
-                                                  assignedById,
-                                                );
+                                          // unused names removed
 
                                           final timeLabel = completed
                                               ? (completedAt == null
@@ -1087,16 +1021,13 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                             child: Container(
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                    horizontal: 12,
-                                                    vertical: 10,
+                                                    horizontal: 10,
+                                                    vertical: 8,
                                                   ),
                                               decoration: BoxDecoration(
                                                 color: AppColors.slate50,
                                                 borderRadius:
-                                                    BorderRadius.circular(12),
-                                                border: Border.all(
-                                                  color: AppColors.slate200,
-                                                ),
+                                                    BorderRadius.circular(6),
                                               ),
                                               child: Column(
                                                 crossAxisAlignment:
@@ -1104,130 +1035,79 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                                 children: [
                                                   Row(
                                                     children: [
-                                                      const Icon(
-                                                        LucideIcons.arrowRight,
-                                                        size: 16,
-                                                        color:
-                                                            AppColors.slate600,
-                                                      ),
-                                                      const SizedBox(width: 8),
                                                       Expanded(
-                                                        child: Text(
-                                                          fromName == null
-                                                              ? 'Assigned to $toName'
-                                                              : '$fromName → $toName',
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 13,
+                                                        child: Wrap(
+                                                          crossAxisAlignment:
+                                                              WrapCrossAlignment
+                                                                  .center,
+                                                          children: [
+                                                            Text(
+                                                              resolveDisplayName(
+                                                                fromId ?? 'Unknown',
+                                                              ),
+                                                              style:
+                                                                  const TextStyle(
                                                                 fontWeight:
                                                                     FontWeight
-                                                                        .w600,
+                                                                        .w500,
+                                                                fontSize: 13,
                                                                 color: AppColors
-                                                                    .slate900,
+                                                                    .slate700,
                                                               ),
+                                                            ),
+                                                            const Padding(
+                                                              padding:
+                                                                  EdgeInsets
+                                                                      .symmetric(
+                                                                horizontal: 6,
+                                                              ),
+                                                              child: Icon(
+                                                                LucideIcons
+                                                                    .arrowRight,
+                                                                size: 12,
+                                                                color: AppColors
+                                                                    .slate400,
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              resolveDisplayName(
+                                                                toId ?? 'Unknown',
+                                                              ),
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                                fontSize: 13,
+                                                                color: AppColors
+                                                                    .slate700,
+                                                              ),
+                                                            ),
+                                                          ],
                                                         ),
                                                       ),
-                                                      if (completed)
-                                                        Container(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 4,
-                                                              ),
-                                                          decoration: BoxDecoration(
+                                                      if (timeLabel != null)
+                                                        Text(
+                                                          timeLabel,
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 11,
                                                             color: AppColors
-                                                                .success
-                                                                .withValues(
-                                                                  alpha: 0.12,
-                                                                ),
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  999,
-                                                                ),
-                                                          ),
-                                                          child: const Text(
-                                                            'Completed',
-                                                            style: TextStyle(
-                                                              fontSize: 11,
-                                                              color: AppColors
-                                                                  .success,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                            ),
-                                                          ),
-                                                        )
-                                                      else
-                                                        Container(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 4,
-                                                              ),
-                                                          decoration: BoxDecoration(
-                                                            color: AppColors
-                                                                .info
-                                                                .withValues(
-                                                                  alpha: 0.10,
-                                                                ),
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  999,
-                                                                ),
-                                                          ),
-                                                          child: const Text(
-                                                            'In progress',
-                                                            style: TextStyle(
-                                                              fontSize: 11,
-                                                              color: AppColors
-                                                                  .info,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                            ),
+                                                                .slate500,
                                                           ),
                                                         ),
                                                     ],
                                                   ),
-                                                  const SizedBox(height: 6),
+                                                  const SizedBox(height: 2),
                                                   Text(
-                                                    'Assigned by: $assignedByName',
+                                                    'By ${resolveDisplayName(assignedById ?? 'Unknown')}',
                                                     style: const TextStyle(
-                                                      fontSize: 12,
-                                                      color: AppColors.slate700,
+                                                      fontSize: 11,
+                                                      color: AppColors.slate500,
+                                                      fontStyle:
+                                                          FontStyle.italic,
                                                     ),
                                                   ),
-                                                  if (note != null &&
-                                                      note.trim().isNotEmpty)
-                                                    Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                            top: 4,
-                                                          ),
-                                                      child: Text(
-                                                        'Note: ${note.trim()}',
-                                                        style: const TextStyle(
-                                                          fontSize: 12,
-                                                          color: AppColors
-                                                              .slate700,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  if (timeLabel != null)
-                                                    Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                            top: 4,
-                                                          ),
-                                                      child: Text(
-                                                        timeLabel,
-                                                        style: const TextStyle(
-                                                          fontSize: 11,
-                                                          color: AppColors
-                                                              .slate600,
-                                                        ),
-                                                      ),
-                                                    ),
                                                 ],
                                               ),
                                             ),
@@ -1236,252 +1116,100 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                                       ],
                                     );
                                   },
-                                  loading: () => const Padding(
-                                    padding: EdgeInsets.all(12),
-                                    child: Center(
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                  ),
-                                  error: (_, __) => Text(
-                                    'Failed to load agents',
-                                    style: TextStyle(color: AppColors.error),
-                                  ),
+                                  loading: () => const SizedBox.shrink(),
+                                  error: (_, __) => const SizedBox.shrink(),
                                 );
                               },
-                              loading: () => const Padding(
-                                padding: EdgeInsets.all(12),
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              ),
-                              error: (err, _) => Text(
-                                'Failed to load history: $err',
-                                style: TextStyle(color: AppColors.error),
-                              ),
+                              loading: () => const SizedBox.shrink(),
+                              error: (_, __) => const SizedBox.shrink(),
                             ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
 
-                  ref
-                      .watch(ticketCustomerProvider(ticket.customerId))
-                      .when(
-                        data: (customerData) {
-                          if (customerData == null) {
-                            return AppCard(
-                              child: Text(
-                                'Customer information not available',
-                                style: TextStyle(color: AppColors.slate500),
-                              ),
-                            );
-                          }
-                          final customer = Customer.fromJson(customerData);
+                  // Customer Info
+                  if (customerAsync.hasValue && customerAsync.value != null)
+                    CustomerInfoCard(
+                      customer: customerAsync.value!,
+                    ),
 
-                          final customerTickets = tickets
-                              .where((t) => t.customerId == ticket.customerId)
-                              .toList();
-                          customerTickets.sort(
-                            (a, b) => (b.createdAt ?? DateTime(0)).compareTo(
-                              a.createdAt ?? DateTime(0),
-                            ),
-                          );
+                  const SizedBox(height: 16),
 
-                          final totalTickets = customerTickets.length;
-                          final resolvedTickets = customerTickets
-                              .where(
-                                (t) => [
-                                  'Resolved',
-                                  'Closed',
-                                  'BillProcessed',
-                                ].contains(t.status),
-                              )
-                              .length;
-                          final pendingTickets = totalTickets - resolvedTickets;
-
-                          final pendingBills = customerTickets
-                              .where((t) => t.status == 'BillRaised')
-                              .toList();
-                          final billedTickets = customerTickets
-                              .where(
-                                (t) =>
-                                    t.status == 'BillProcessed' ||
-                                    t.status == 'Closed',
-                              )
-                              .toList();
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              CustomerInfoCard(customer: customer),
-                              const SizedBox(height: 16),
-                              if (customerTickets.isNotEmpty)
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _buildCustomerStatBox(
-                                        'Total Tickets',
-                                        totalTickets.toString(),
-                                        LucideIcons.ticket,
-                                        AppColors.primary,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _buildCustomerStatBox(
-                                        'Resolved',
-                                        resolvedTickets.toString(),
-                                        LucideIcons.checkCircle,
-                                        AppColors.success,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _buildCustomerStatBox(
-                                        'Pending',
-                                        pendingTickets.toString(),
-                                        LucideIcons.clock,
-                                        AppColors.warning,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              if (pendingBills.isNotEmpty ||
-                                  billedTickets.isNotEmpty) ...[
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _buildCustomerStatBox(
-                                        'Pending bills',
-                                        pendingBills.length.toString(),
-                                        LucideIcons.receipt,
-                                        AppColors.warning,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _buildCustomerStatBox(
-                                        'Billed tickets',
-                                        billedTickets.length.toString(),
-                                        LucideIcons.receipt,
-                                        AppColors.success,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ],
-                          );
-                        },
-                        loading: () => const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(40),
-                            child: CircularProgressIndicator(),
-                          ),
-                        ),
-                        error: (err, _) => AppCard(
-                          child: Text(
-                            'Error loading customer: $err',
-                            style: TextStyle(color: AppColors.error),
-                          ),
-                        ),
-                      ),
-                  const SizedBox(height: 24),
-
-                  activitiesAsync.when(
-                    data: (activities) {
-                      if (activities.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final recent = activities.take(3).toList();
-
-                      return Column(
+                  // Customer Activity
+                  if (activitiesAsync.hasValue)
+                    AppCard(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: AppColors.slate100,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  LucideIcons.activity,
-                                  size: 18,
-                                  color: AppColors.slate700,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              const Text(
-                                'Recent account activities',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.slate900,
-                                ),
-                              ),
-                            ],
+                          const Text(
+                            'Recent Activity',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: AppColors.slate900,
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          Column(
-                            children: recent
-                                .map(
-                                  (activity) => Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 4,
-                                    ),
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Icon(
-                                          LucideIcons.clock,
-                                          size: 14,
-                                          color: AppColors.info.withValues(
-                                            alpha: 0.10,
-                                          ),
+                          const SizedBox(height: 12),
+                          if (activitiesAsync.value!.isEmpty)
+                            const Text(
+                              'No recent activity',
+                              style: TextStyle(
+                                color: AppColors.slate500,
+                                fontSize: 13,
+                              ),
+                            )
+                          else
+                            Column(
+                              children: activitiesAsync.value!.take(3).map((a) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 6,
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary,
+                                          borderRadius:
+                                              BorderRadius.circular(3),
                                         ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                activity.subject,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: AppColors.slate900,
-                                                ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              a.subject,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: AppColors.slate900,
                                               ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                '${activity.type} · ${timeago.format(activity.occurredAt)}',
-                                                style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color: AppColors.slate600,
-                                                ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${a.type} · ${timeago.format(a.occurredAt)}',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.slate600,
                                               ),
-                                            ],
-                                          ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
-                                )
-                                .toList(),
-                          ),
-                          const SizedBox(height: 24),
+                                );
+                              }).toList(),
+                            ),
                         ],
-                      );
-                    },
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                  ),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
 
                   // Override Resolve Button (Support Head only, feature-flagged)
                   if (enableSupportHeadForceResolve &&
@@ -1594,57 +1322,6 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
     return '${days}d ${hours}h';
   }
 
-  Widget _buildCustomerStatBox(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 16),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.slate600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildStatusBadge(String status) {
     StatusVariant variant;
     if (status.contains('New') || status.contains('Open')) {
@@ -1664,27 +1341,34 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
     required String label,
     required String value,
     required Color color,
+    bool compact = false,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 12,
+        vertical: compact ? 4 : 8,
+      ),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 6),
+          Icon(icon, size: compact ? 12 : 16, color: color),
+          SizedBox(width: compact ? 4 : 6),
           Text(
             '$label: ',
-            style: TextStyle(fontSize: 12, color: AppColors.slate600),
+            style: TextStyle(
+              fontSize: compact ? 11 : 12,
+              color: AppColors.slate600,
+            ),
           ),
           Text(
             value,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: compact ? 11 : 12,
               fontWeight: FontWeight.bold,
               color: color,
             ),
@@ -1718,28 +1402,28 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
           'Customer Screenshot',
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            fontSize: 16,
+            fontSize: 14,
             color: AppColors.slate900,
           ),
         ),
         const SizedBox(height: 8),
         Container(
           width: double.infinity,
-          constraints: const BoxConstraints(maxHeight: 320),
+          constraints: const BoxConstraints(maxHeight: 280),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppColors.slate200),
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             child: Image.network(
               url,
               fit: BoxFit.contain,
               loadingBuilder: (context, child, progress) {
                 if (progress == null) return child;
                 return SizedBox(
-                  height: 220,
+                  height: 180,
                   child: Center(
                     child: CircularProgressIndicator(
                       value: progress.expectedTotalBytes != null
@@ -1752,22 +1436,43 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
               },
               errorBuilder: (_, __, ___) => Container(
                 alignment: Alignment.center,
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(16),
                 child: const Text(
                   'Unable to load screenshot',
-                  style: TextStyle(color: AppColors.error),
+                  style: TextStyle(color: AppColors.error, fontSize: 13),
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => _openScreenshot(url),
-            icon: const Icon(LucideIcons.externalLink, size: 16),
-            label: const Text('Open full size'),
+          child: InkWell(
+            onTap: () => _openScreenshot(url),
+            borderRadius: BorderRadius.circular(4),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    LucideIcons.externalLink,
+                    size: 14,
+                    color: AppColors.primary,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Open full size',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ],

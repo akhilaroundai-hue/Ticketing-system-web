@@ -9,11 +9,97 @@ import '../../domain/entities/customer.dart';
 class CustomerInfoCard extends StatelessWidget {
   final Customer customer;
   final VoidCallback? onTap;
+  final bool compact;
 
-  const CustomerInfoCard({super.key, required this.customer, this.onTap});
+  const CustomerInfoCard({
+    super.key,
+    required this.customer,
+    this.onTap,
+    this.compact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (compact) {
+      return AppCard(
+        onTap: onTap,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  LucideIcons.building2,
+                  size: 18,
+                  color: AppColors.slate500,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    customer.companyName,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.slate900,
+                    ),
+                  ),
+                ),
+                if (customer.contactPhone != null) ...[
+                  const SizedBox(width: 12),
+                  Icon(LucideIcons.phone, size: 14, color: AppColors.slate400),
+                  const SizedBox(width: 4),
+                  Text(
+                    customer.contactPhone!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.slate600,
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => context.go('/customer/${customer.id}/edit'),
+                  icon: const Icon(LucideIcons.edit2, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Edit Customer',
+                  color: AppColors.slate400,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _CompactStatusChip(
+                  label: 'AMC',
+                  isActive: customer.isAmcActive,
+                  expiryDate: customer.amcExpiryDate,
+                ),
+                const SizedBox(width: 8),
+                _CompactStatusChip(
+                  label: 'TSS',
+                  isActive: customer.isTssActive,
+                  expiryDate: customer.tssExpiryDate,
+                  isTss: true,
+                ),
+                const Spacer(),
+                if (customer.tallySerialNo != null)
+                  Text(
+                    'SN: ${customer.tallySerialNo}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.slate500,
+                      fontFamily: 'Monospace',
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return AppCard(
       onTap: onTap,
       child: Column(
@@ -231,7 +317,7 @@ class _StatusCard extends StatelessWidget {
     final dateFormatter = DateFormat('dd MMM yyyy');
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
@@ -242,13 +328,13 @@ class _StatusCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: color),
+              Icon(icon, size: 14, color: color),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   label,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: color,
                   ),
@@ -256,33 +342,85 @@ class _StatusCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
             isActive ? 'Active' : 'Expired',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.bold,
               color: color,
             ),
           ),
           if (expiryDate != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               'Expires: ${dateFormatter.format(expiryDate!)}',
-              style: const TextStyle(fontSize: 11, color: AppColors.slate600),
+              style: const TextStyle(fontSize: 10, color: AppColors.slate600),
             ),
           ],
           if (isActive && daysRemaining > 0 && daysRemaining <= 30) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               '$daysRemaining days left',
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
                 color: daysRemaining <= 7 ? AppColors.error : AppColors.warning,
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactStatusChip extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final DateTime? expiryDate;
+  final bool isTss;
+
+  const _CompactStatusChip({
+    required this.label,
+    required this.isActive,
+    this.expiryDate,
+    this.isTss = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive
+        ? (isTss ? AppColors.info : AppColors.success)
+        : AppColors.error;
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
         ],
       ),
     );

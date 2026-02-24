@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_theme.dart';
 
-/// Unified list tile card for consistent list item styling
-/// Used for tickets, customers, transactions lists
-class ListTileCard extends StatelessWidget {
+/// Enterprise-style list tile card for consistent list item styling
+class ListTileCard extends StatefulWidget {
   final Widget? leading;
   final String title;
   final String? subtitle;
@@ -28,90 +28,112 @@ class ListTileCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                // Accent border on left
-                if (showAccentBorder && accentColor != null)
-                  Container(width: 4, color: accentColor),
+  State<ListTileCard> createState() => _ListTileCardState();
+}
 
-                // Content
-                Expanded(
-                  child: Padding(
-                    padding: padding ?? const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (leading != null) ...[
-                              leading!,
-                              const SizedBox(width: 12),
-                            ],
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    title,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.slate900,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (subtitle != null) ...[
-                                    const SizedBox(height: 4),
+class _ListTileCardState extends State<ListTileCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        decoration: BoxDecoration(
+          color: _isHovered ? AppColors.surfaceHover : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _isHovered ? AppColors.borderHover : AppColors.border,
+            width: 1,
+          ),
+          boxShadow: _isHovered ? AppTheme.cardShadow : AppTheme.subtleShadow,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            splashColor: AppColors.slate200.withValues(alpha: 0.3),
+            highlightColor: AppColors.slate100.withValues(alpha: 0.5),
+            child: IntrinsicHeight(
+              child: Row(
+                children: [
+                  // Accent border on left
+                  if (widget.showAccentBorder && widget.accentColor != null)
+                    Container(
+                      width: 4,
+                      decoration: BoxDecoration(
+                        color: widget.accentColor,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          bottomLeft: Radius.circular(12),
+                        ),
+                      ),
+                    ),
+
+                  // Content
+                  Expanded(
+                    child: Padding(
+                      padding: widget.padding ?? const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (widget.leading != null) ...[
+                                widget.leading!,
+                                const SizedBox(width: 14),
+                              ],
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      subtitle!,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: AppColors.slate500,
+                                      widget.title,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.slate900,
+                                        letterSpacing: -0.2,
                                       ),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                     ),
+                                    if (widget.subtitle != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        widget.subtitle!,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: AppColors.slate500,
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ],
-                                ],
+                                ),
                               ),
-                            ),
-                            if (trailing != null) ...[
-                              const SizedBox(width: 12),
-                              trailing!,
+                              if (widget.trailing != null) ...[
+                                const SizedBox(width: 14),
+                                widget.trailing!,
+                              ],
                             ],
+                          ),
+                          if (widget.bottom != null) ...[
+                            const SizedBox(height: 14),
+                            widget.bottom!,
                           ],
-                        ),
-                        if (bottom != null) ...[
-                          const SizedBox(height: 12),
-                          bottom!,
                         ],
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

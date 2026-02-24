@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/design_system/design_system.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../tickets/presentation/providers/ticket_provider.dart';
 import '../../../customers/presentation/providers/customer_provider.dart';
 import '../widgets/create_ticket_dialog.dart';
-import '../widgets/ticket_card_with_amc.dart';
+import '../widgets/animated_create_ticket_fab.dart';
 
 class AgentDashboardPage extends ConsumerWidget {
   final String currentPath;
@@ -23,19 +24,13 @@ class AgentDashboardPage extends ConsumerWidget {
       currentPath: currentPath,
       child: Scaffold(
         backgroundColor: AppColors.slate50,
-        floatingActionButton: FloatingActionButton.extended(
+        floatingActionButton: AnimatedCreateTicketFab(
           onPressed: () {
             showDialog(
               context: context,
               builder: (context) => const CreateTicketDialog(isSupport: true),
             );
           },
-          icon: const Icon(LucideIcons.plus, color: Colors.white),
-          label: const Text(
-            'Create Ticket',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: AppColors.primary,
         ),
         body: Column(
           children: [
@@ -117,10 +112,15 @@ class AgentDashboardPage extends ConsumerWidget {
                             })
                             .toList();
 
+                        final canClaim = user?.isSupportHead == true ||
+                            user?.isSupport == true ||
+                            user?.isAgent == true;
+
                         return _UnclaimedTicketsListView(
                           tickets: todayUnclaimed,
                           customerMap: customerMap,
                           title: "Today's Unclaimed",
+                          canClaim: canClaim,
                         );
                       },
                       loading: () =>
@@ -145,11 +145,13 @@ class _UnclaimedTicketsListView extends StatelessWidget {
   final List<dynamic> tickets;
   final Map<String, dynamic> customerMap;
   final String title;
+  final bool canClaim;
 
   const _UnclaimedTicketsListView({
     required this.tickets,
     required this.customerMap,
     required this.title,
+    required this.canClaim,
   });
 
   @override
@@ -160,21 +162,27 @@ class _UnclaimedTicketsListView extends StatelessWidget {
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.05),
+            gradient: AppColors.sidebarGradient,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(LucideIcons.calendar, size: 18, color: AppColors.primary),
+              const Icon(LucideIcons.calendar, size: 18, color: Colors.white),
               const SizedBox(width: 8),
               Text(
                 "$title (${tickets.length})",
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
+                  color: Colors.white,
                   fontSize: 14,
                 ),
               ),
@@ -334,6 +342,29 @@ class _UnclaimedTicketsListView extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (canClaim) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 36,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(LucideIcons.userCheck, size: 16),
+                        label: const Text('Claim ticket'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.info,
+                          side: BorderSide(
+                            color: AppColors.info.withValues(alpha: 0.6),
+                          ),
+                        ),
+                        onPressed: () {
+                          context.go(
+                            '/ticket/${ticket.ticketId}',
+                            extra: {'autoClaim': true},
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -381,18 +412,8 @@ class _UnclaimedTicketsListView extends StatelessWidget {
 
   String _formatDate(DateTime? date) {
     if (date == null) return '-';
-    final now = DateTime.now();
-    final diff = now.difference(date);
-
-    if (diff.inDays == 0) {
-      return 'Today ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    } else if (diff.inDays == 1) {
-      return 'Yesterday';
-    } else if (diff.inDays < 7) {
-      return '${diff.inDays}d ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
+    final localTime = _toLocalTime(date);
+    return DateFormat('dd MMM yyyy • hh:mm a').format(localTime);
   }
 }
 
@@ -415,4 +436,10 @@ class _EmptyListPlaceholder extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Returns the DateTime as-is for display.
+/// Timestamps are stored and retrieved as local time (no timezone conversion needed).
+DateTime _toLocalTime(DateTime dateTime) {
+  return dateTime;
 }

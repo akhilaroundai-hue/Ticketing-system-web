@@ -22,6 +22,7 @@ abstract class TicketRepository {
     String ticketId,
     double amount,
   );
+  Future<Either<Failure, Unit>> deleteTickets(List<String> ticketIds);
   Stream<Map<String, int>> getTicketStats();
   Future<List<Map<String, dynamic>>> getAgents();
   Future<Map<String, dynamic>?> getAgent(String agentId);

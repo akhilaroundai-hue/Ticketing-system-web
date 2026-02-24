@@ -370,8 +370,6 @@ class TicketAssigner extends _$TicketAssigner {
       if (!ref.mounted) return result.isRight();
 
       if (result.isRight() && ref.mounted) {
-        ref.invalidate(ticketsStreamProvider);
-        ref.invalidate(ticketStatsProvider);
         Timer(const Duration(seconds: 10), () {
           if (!ref.mounted) return;
           optimisticAssigneeOverrides.clearOverride(ticketId);

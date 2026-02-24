@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../theme/app_colors.dart';
 
-/// Unified text field component for consistent styling across the app
+/// Enterprise-style text field with refined styling
 class AppTextField extends StatelessWidget {
   final TextEditingController? controller;
   final String? hintText;
@@ -20,6 +20,8 @@ class AppTextField extends StatelessWidget {
   final FocusNode? focusNode;
   final VoidCallback? onTap;
   final bool readOnly;
+  final String? helperText;
+  final bool showBorder;
 
   const AppTextField({
     super.key,
@@ -39,6 +41,8 @@ class AppTextField extends StatelessWidget {
     this.focusNode,
     this.onTap,
     this.readOnly = false,
+    this.helperText,
+    this.showBorder = true,
   });
 
   @override
@@ -55,14 +59,31 @@ class AppTextField extends StatelessWidget {
       focusNode: focusNode,
       onTap: onTap,
       readOnly: readOnly,
-      style: const TextStyle(fontSize: 14, color: AppColors.slate900),
+      style: const TextStyle(
+        fontSize: 14,
+        color: AppColors.slate900,
+        fontWeight: FontWeight.w400,
+      ),
       decoration: InputDecoration(
         hintText: hintText,
         labelText: labelText,
-        hintStyle: TextStyle(fontSize: 14, color: AppColors.slate400),
-        labelStyle: TextStyle(fontSize: 14, color: AppColors.slate500),
+        helperText: helperText,
+        hintStyle: const TextStyle(
+          fontSize: 14,
+          color: AppColors.slate400,
+          fontWeight: FontWeight.w400,
+        ),
+        labelStyle: const TextStyle(
+          fontSize: 14,
+          color: AppColors.slate600,
+          fontWeight: FontWeight.w500,
+        ),
+        helperStyle: const TextStyle(
+          fontSize: 12,
+          color: AppColors.slate500,
+        ),
         prefixIcon: prefixIcon != null
-            ? Icon(prefixIcon, size: 18, color: AppColors.slate400)
+            ? Icon(prefixIcon, size: 20, color: AppColors.slate400)
             : null,
         suffixIcon:
             suffix ??
@@ -76,42 +97,52 @@ class AppTextField extends StatelessWidget {
                   )
                 : null),
         filled: true,
-        fillColor: enabled ? Colors.white : AppColors.slate100,
+        fillColor: enabled ? Colors.white : AppColors.slate50,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
-          vertical: 12,
+          vertical: 14,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: showBorder
+              ? const BorderSide(color: AppColors.border, width: 1.5)
+              : BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: showBorder
+              ? const BorderSide(color: AppColors.border, width: 1.5)
+              : BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.error),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.error, width: 1.5),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.error, width: 2),
         ),
         disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: AppColors.slate200),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.slate200),
         ),
       ),
     );
   }
 }
 
-/// Search bar variant with built-in search icon and clear functionality
+/// Enterprise search bar with refined styling and animations
 class AppSearchBar extends StatefulWidget {
   final String? hintText;
   final ValueChanged<String>? onChanged;
   final Duration debounceDuration;
   final TextEditingController? controller;
+  final bool autofocus;
+  final bool elevated;
 
   const AppSearchBar({
     super.key,
@@ -119,6 +150,8 @@ class AppSearchBar extends StatefulWidget {
     this.onChanged,
     this.debounceDuration = const Duration(milliseconds: 300),
     this.controller,
+    this.autofocus = false,
+    this.elevated = true,
   });
 
   @override
@@ -128,6 +161,7 @@ class AppSearchBar extends StatefulWidget {
 class _AppSearchBarState extends State<AppSearchBar> {
   late TextEditingController _controller;
   bool _showClear = false;
+  bool _isFocused = false;
 
   @override
   void initState() {
@@ -161,18 +195,65 @@ class _AppSearchBarState extends State<AppSearchBar> {
 
   @override
   Widget build(BuildContext context) {
-    return AppTextField(
-      controller: _controller,
-      hintText: widget.hintText,
-      prefixIcon: LucideIcons.search,
-      onChanged: widget.onChanged,
-      suffix: _showClear
-          ? IconButton(
-              icon: const Icon(LucideIcons.x, size: 16),
-              onPressed: _onClear,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _isFocused ? AppColors.primary : AppColors.border,
+          width: _isFocused ? 2 : 1.5,
+        ),
+        boxShadow: widget.elevated
+            ? [
+                BoxShadow(
+                  color: _isFocused
+                      ? AppColors.primary.withValues(alpha: 0.1)
+                      : AppColors.shadowLight,
+                  blurRadius: _isFocused ? 8 : 4,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: Focus(
+        onFocusChange: (focused) => setState(() => _isFocused = focused),
+        child: TextField(
+          controller: _controller,
+          autofocus: widget.autofocus,
+          onChanged: widget.onChanged,
+          style: const TextStyle(
+            fontSize: 14,
+            color: AppColors.slate900,
+            fontWeight: FontWeight.w400,
+          ),
+          decoration: InputDecoration(
+            hintText: widget.hintText,
+            hintStyle: const TextStyle(
               color: AppColors.slate400,
-            )
-          : null,
+              fontWeight: FontWeight.w400,
+            ),
+            prefixIcon: Icon(
+              LucideIcons.search,
+              color: _isFocused ? AppColors.primary : AppColors.slate400,
+              size: 20,
+            ),
+            suffixIcon: _showClear
+                ? IconButton(
+                    icon: const Icon(LucideIcons.x, size: 16),
+                    onPressed: _onClear,
+                    color: AppColors.slate400,
+                    splashRadius: 18,
+                  )
+                : null,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

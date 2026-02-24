@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/design_system/design_system.dart';
+import '../widgets/animated_create_ticket_fab.dart';
 import '../widgets/create_ticket_dialog.dart';
 import '../../../tickets/presentation/providers/ticket_provider.dart';
 import '../widgets/ticket_card_with_amc.dart';
@@ -18,16 +19,13 @@ class ModeratorDashboardPage extends ConsumerWidget {
       currentPath: '/moderator',
       child: Scaffold(
         backgroundColor: AppColors.slate50,
-        floatingActionButton: FloatingActionButton.extended(
+        floatingActionButton: AnimatedCreateTicketFab(
           onPressed: () {
             showDialog(
               context: context,
               builder: (context) => const CreateTicketDialog(),
             );
           },
-          icon: const Icon(LucideIcons.plus),
-          label: const Text('Create Ticket'),
-          backgroundColor: AppColors.primary,
         ),
         body: ticketsAsync.when(
           data: (tickets) {

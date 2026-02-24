@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
-/// Consistent section header used across all pages
-/// Matches the "Recent Tickets", "All Tickets", "Customers" header style from mockups
+/// Enterprise-style section header with refined typography
 class SectionHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -10,6 +9,7 @@ class SectionHeader extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
   final IconData? icon;
   final Color? iconColor;
+  final bool showDivider;
 
   const SectionHeader({
     super.key,
@@ -19,6 +19,7 @@ class SectionHeader extends StatelessWidget {
     this.padding,
     this.icon,
     this.iconColor,
+    this.showDivider = false,
   });
 
   @override
@@ -27,19 +28,104 @@ class SectionHeader extends StatelessWidget {
 
     return Padding(
       padding: padding ?? EdgeInsets.zero,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (icon != null) ...[
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (icon != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.15),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(icon, color: color, size: 20),
+                ),
+                const SizedBox(width: 14),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.slate900,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.slate500,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-              child: Icon(icon, color: color, size: 20),
+              if (trailing != null) trailing!,
+            ],
+          ),
+          if (showDivider) ...[
+            const SizedBox(height: 16),
+            const Divider(height: 1, color: AppColors.border),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Enterprise page header with refined back navigation
+class PageHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onBack;
+  final List<Widget>? actions;
+
+  const PageHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.onBack,
+    this.actions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          if (onBack != null) ...[
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.slate100,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                onPressed: onBack,
+                color: AppColors.slate700,
+                tooltip: 'Go back',
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 16),
           ],
           Expanded(
             child: Column(
@@ -48,16 +134,107 @@ class SectionHeader extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
                     color: AppColors.slate900,
+                    letterSpacing: -0.5,
                   ),
                 ),
                 if (subtitle != null) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle!,
-                    style: TextStyle(fontSize: 13, color: AppColors.slate500),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.slate500,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (actions != null) ...[
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: actions!.map((action) => Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: action,
+              )).toList(),
+            ),
+          ],
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}
+
+/// Enterprise welcome header for dashboard pages
+class WelcomeHeader extends StatelessWidget {
+  final String greeting;
+  final String name;
+  final String? subtitle;
+  final Widget? trailing;
+  final String? avatarUrl;
+
+  const WelcomeHeader({
+    super.key,
+    this.greeting = 'Welcome back',
+    required this.name,
+    this.subtitle,
+    this.trailing,
+    this.avatarUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  greeting,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.slate500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.slate900,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySurface,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Text(
+                      subtitle!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ],
@@ -70,105 +247,3 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-/// Page header with back navigation support
-class PageHeader extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-  final Widget? trailing;
-  final VoidCallback? onBack;
-
-  const PageHeader({
-    super.key,
-    required this.title,
-    this.subtitle,
-    this.trailing,
-    this.onBack,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        if (onBack != null) ...[
-          IconButton(
-            icon: const Icon(Icons.arrow_back, size: 20),
-            onPressed: onBack,
-            color: AppColors.slate700,
-          ),
-          const SizedBox(width: 8),
-        ],
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.slate900,
-                ),
-              ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle!,
-                  style: TextStyle(fontSize: 14, color: AppColors.slate500),
-                ),
-              ],
-            ],
-          ),
-        ),
-        if (trailing != null) trailing!,
-      ],
-    );
-  }
-}
-
-/// Welcome header for dashboard pages
-class WelcomeHeader extends StatelessWidget {
-  final String greeting;
-  final String name;
-  final String? subtitle;
-  final Widget? trailing;
-
-  const WelcomeHeader({
-    super.key,
-    this.greeting = 'Welcome back',
-    required this.name,
-    this.subtitle,
-    this.trailing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$greeting, $name',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.slate900,
-                ),
-              ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle!,
-                  style: TextStyle(fontSize: 14, color: AppColors.slate500),
-                ),
-              ],
-            ],
-          ),
-        ),
-        if (trailing != null) trailing!,
-      ],
-    );
-  }
-}

@@ -9,6 +9,8 @@ import '../../../tickets/presentation/providers/ticket_provider.dart';
 import '../widgets/ticket_card_with_amc.dart';
 import '../../../customers/presentation/providers/customer_provider.dart';
 import '../providers/app_settings_provider.dart';
+import '../widgets/animated_create_ticket_fab.dart';
+import '../widgets/create_ticket_dialog.dart';
 
 class AdminDashboardPage extends ConsumerStatefulWidget {
   const AdminDashboardPage({super.key});
@@ -35,6 +37,14 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       currentPath: '/admin',
       child: Scaffold(
         backgroundColor: AppColors.slate50,
+        floatingActionButton: AnimatedCreateTicketFab(
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (context) => const CreateTicketDialog(),
+            );
+          },
+        ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -89,6 +99,12 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   final crossAxisCount = isWide
                       ? 3
                       : (constraints.maxWidth > 700 ? 2 : 1);
+                  // When the layout collapses to fewer columns the cards need
+                  // additional vertical space, otherwise the fixed
+                  // mainAxisExtent would clip the KPI content and trigger the
+                  // yellow/black overflow warning banner. Give compact grids a
+                  // touch more height so the text + chip fit comfortably.
+                  final tileHeight = crossAxisCount >= 3 ? 190.0 : 220.0;
 
                   return GridView(
                     shrinkWrap: true,
@@ -97,7 +113,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                       crossAxisCount: crossAxisCount,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
-                      mainAxisExtent: 130,
+                      mainAxisExtent: tileHeight,
                     ),
                     children: [
                       AppCard(
@@ -112,6 +128,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                               primaryValue: total.toString(),
                               secondaryLabel: 'Open / In Progress',
                               secondaryValue: '$open / $inProgress',
+                              icon: LucideIcons.inbox,
+                              accentColor: AppColors.info,
                             );
                           },
                           loading: () => const _KpiLoading(),
@@ -129,6 +147,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                               primaryValue: active.toString(),
                               secondaryLabel: 'Expired',
                               secondaryValue: expired.toString(),
+                              icon: LucideIcons.shield,
+                              accentColor: AppColors.success,
                             );
                           },
                           loading: () => const _KpiLoading(),
@@ -168,6 +188,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                               primaryValue: '$createdToday new',
                               secondaryLabel: 'Resolved today',
                               secondaryValue: resolvedToday.toString(),
+                              icon: LucideIcons.activity,
+                              accentColor: AppColors.accent,
                             );
                           },
                           loading: () => const _KpiLoading(),
@@ -620,37 +642,47 @@ class _KpiTile extends StatelessWidget {
   final String primaryValue;
   final String secondaryLabel;
   final String secondaryValue;
+  final IconData? icon;
+  final Color? accentColor;
 
   const _KpiTile({
     required this.label,
     required this.primaryValue,
     required this.secondaryLabel,
     required this.secondaryValue,
+    this.icon,
+    this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color = accentColor ?? AppColors.primary;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Row(
           children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(999),
+            if (icon != null) ...[
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 18, color: color),
               ),
-            ),
-            const SizedBox(width: 8),
+              const SizedBox(width: 12),
+            ],
             Expanded(
               child: Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.slate700,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.slate500,
+                  letterSpacing: 0.2,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -658,25 +690,46 @@ class _KpiTile extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         Text(
           primaryValue,
           style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+            fontSize: 32,
+            fontWeight: FontWeight.w700,
             color: AppColors.slate900,
+            letterSpacing: -1,
+            height: 1,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: AppColors.slate100,
-            borderRadius: BorderRadius.circular(999),
+            color: AppColors.slate50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.border),
           ),
-          child: Text(
-            '$secondaryLabel: $secondaryValue',
-            style: const TextStyle(fontSize: 11, color: AppColors.slate600),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                secondaryLabel,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.slate500,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                secondaryValue,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ],

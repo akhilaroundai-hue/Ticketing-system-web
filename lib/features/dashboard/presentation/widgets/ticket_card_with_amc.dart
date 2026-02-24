@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:intl/intl.dart';
-import '../../../../core/design_system/components/status_badge.dart';
 import '../../../../core/design_system/theme/app_colors.dart';
 import '../../../tickets/domain/entities/ticket.dart';
 import '../../../tickets/presentation/providers/ticket_provider.dart';
@@ -12,24 +11,7 @@ import '../../../customers/domain/entities/customer.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../dashboard/presentation/providers/app_settings_provider.dart';
 
-const Set<String> _stagePendingStatuses = {
-  'in progress',
-  'inprogress',
-  'waiting for customer',
-  'waitingforcustomer',
-  'waiting',
-  'onhold',
-  'pending',
-  'acknowledged',
-  'assigned',
-};
-
-const Set<String> _stageResolvedStatuses = {
-  'resolved',
-};
-
 const Set<String> _stageBilledStatuses = {
-  'billraised',
   'billprocessed',
   'closed',
 };
@@ -40,6 +22,12 @@ const Set<String> _autoStartStatuses = {
   'Waiting for Customer',
 };
 
+/// Converts a DateTime to local time for display
+/// Timestamps are stored and retrieved as local time (no timezone conversion needed).
+DateTime _toLocalTime(DateTime dateTime) {
+  return dateTime;
+}
+
 enum TicketCardLayout {
   standard, // Vertical lists: Center Company Name
   compact, // Top Section: Title Left, Overdue Right, Company below Badge
@@ -49,12 +37,14 @@ class TicketCardWithAmc extends ConsumerWidget {
   final Ticket ticket;
   final bool highlightPriorityCustomer;
   final TicketCardLayout layout;
+  final bool forceClaimButton;
 
   const TicketCardWithAmc({
     super.key,
     required this.ticket,
     this.highlightPriorityCustomer = false,
     this.layout = TicketCardLayout.standard,
+    this.forceClaimButton = false,
   });
 
   @override
@@ -64,8 +54,6 @@ class TicketCardWithAmc extends ConsumerWidget {
     final advancedSettings = ref
         .watch(advancedSettingsProvider)
         .maybeWhen(data: (value) => value, orElse: () => null);
-
-    final slaChip = _buildSlaChip(ticket, advancedSettings);
 
     Color? cardBackgroundColor;
     Color? borderColor;
@@ -103,10 +91,6 @@ class TicketCardWithAmc extends ConsumerWidget {
       } else {
         cardBackgroundColor = Colors.white;
         borderColor = AppColors.border;
-        ribbonColor = const Color(0xFFF1F5F9);
-        ribbonTextColor = AppColors.slate700;
-        ribbonLabel = 'Standard';
-        ribbonIcon = LucideIcons.users;
       }
     } else if (isPriorityCustomer) {
       cardBackgroundColor ??= Colors.white;
@@ -124,79 +108,105 @@ class TicketCardWithAmc extends ConsumerWidget {
     final Color headingColor = isDarkSurface
         ? Colors.white
         : AppColors.slate900;
-    final Color bodyColor = isDarkSurface
-        ? Colors.white.withValues(alpha: 0.85)
-        : AppColors.slate600;
-    final Color subtleIconColor = isDarkSurface
-        ? Colors.white.withValues(alpha: 0.7)
-        : AppColors.slate400;
-
     final currentUser = ref.watch(authProvider);
     final isMyTicket = currentUser?.id == ticket.assignedTo;
-    final canClaimTicket = currentUser?.isSupport == true ||
+    final roleLower = currentUser?.role.trim().toLowerCase() ?? '';
+    final canClaimTicket = forceClaimButton ||
+        currentUser?.isSupport == true ||
         currentUser?.isSupportHead == true ||
-        currentUser?.isAgent == true;
+        currentUser?.isAgent == true ||
+        roleLower.contains('support');
     final isCompactLayout = layout == TicketCardLayout.compact;
 
     final hasRibbon = ribbonLabel != null;
 
+    final isUnassigned =
+        ticket.assignedTo == null || ticket.assignedTo!.isEmpty;
+    final disableCardTap = canClaimTicket && isUnassigned;
+
     return Container(
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: borderColor ?? AppColors.border,
-          width: borderColor != null ? 2 : 1,
+          width: borderColor != null ? 1.5 : 1,
         ),
         boxShadow: [
           BoxShadow(
             color: isDarkSurface
-                ? Colors.black.withValues(alpha: 0.3)
-                : Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+                ? Colors.black.withValues(alpha: 0.25)
+                : AppColors.shadowLight,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
+          if (!isDarkSurface)
+            BoxShadow(
+              color: AppColors.shadowLight,
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
         ],
       ),
       child: Column(
         children: [
           Stack(
             children: [
-              InkWell(
-                onTap: () => context.push('/ticket/${ticket.ticketId}'),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  child: isCompactLayout
-                      ? _buildCompactContent(
-                          context: context,
-                          ref: ref,
-                          headingColor: headingColor,
-                          bodyColor: bodyColor,
-                          subtleIconColor: subtleIconColor,
-                          customerAsync: customerAsync,
-                          slaChip: slaChip,
-                          canClaimTicket: canClaimTicket,
-                          isMyTicket: isMyTicket,
-                          hasRibbon: hasRibbon,
-                        )
-                      : _buildStandardContent(
-                          context: context,
-                          ref: ref,
-                          headingColor: headingColor,
-                          bodyColor: bodyColor,
-                          subtleIconColor: subtleIconColor,
-                          customerAsync: customerAsync,
-                          slaChip: slaChip,
-                          canClaimTicket: canClaimTicket,
-                          isMyTicket: isMyTicket,
-                          hasRibbon: hasRibbon,
+              disableCardTap
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      child: isCompactLayout
+                          ? _buildCompactContent(
+                              context: context,
+                              ref: ref,
+                              headingColor: headingColor,
+                              customerAsync: customerAsync,
+                              canClaimTicket: canClaimTicket,
+                              isMyTicket: isMyTicket,
+                              hasRibbon: hasRibbon,
+                            )
+                          : _buildStandardContent(
+                              context: context,
+                              ref: ref,
+                              headingColor: headingColor,
+                              customerAsync: customerAsync,
+                              canClaimTicket: canClaimTicket,
+                              isMyTicket: isMyTicket,
+                              hasRibbon: hasRibbon,
+                            ),
+                    )
+                  : InkWell(
+                      onTap: () => context.push('/ticket/${ticket.ticketId}'),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
                         ),
-                ),
-              ),
+                        child: isCompactLayout
+                            ? _buildCompactContent(
+                                context: context,
+                                ref: ref,
+                                headingColor: headingColor,
+                                customerAsync: customerAsync,
+                                canClaimTicket: canClaimTicket,
+                                isMyTicket: isMyTicket,
+                                hasRibbon: hasRibbon,
+                              )
+                            : _buildStandardContent(
+                                context: context,
+                                ref: ref,
+                                headingColor: headingColor,
+                                customerAsync: customerAsync,
+                                canClaimTicket: canClaimTicket,
+                                isMyTicket: isMyTicket,
+                                hasRibbon: hasRibbon,
+                              ),
+                      ),
+                    ),
               if (ribbonLabel != null)
                 Positioned(
                   right: 12,
@@ -310,64 +320,12 @@ class TicketCardWithAmc extends ConsumerWidget {
     }
   }
 
-  Widget? _buildSlaChip(Ticket ticket, dynamic advancedSettings) {
-    final slaDue = _computeTargetDue(ticket, advancedSettings);
-    if (slaDue == null) return null;
-
-    if (['Resolved', 'Closed', 'BillProcessed'].contains(ticket.status)) {
-      return null;
-    }
-
-    final now = DateTime.now();
-    final diff = slaDue.difference(now);
-    final minutes = diff.inMinutes;
-
-    String label;
-    Color bg;
-    Color fg;
-
-    if (minutes >= 60) {
-      final hours = (minutes / 60).ceil();
-      label = 'Due in ${hours}h';
-      bg = AppColors.success.withValues(alpha: 0.1);
-      fg = AppColors.success;
-    } else if (minutes >= 0) {
-      label = 'Due in ${minutes}m';
-      bg = AppColors.warning.withValues(alpha: 0.1);
-      fg = AppColors.warning;
-    } else {
-      final overdueMinutes = -minutes;
-      if (overdueMinutes >= 60) {
-        final hours = (overdueMinutes / 60).ceil();
-        label = 'Overdue by ${hours}h';
-      } else {
-        label = 'Overdue by ${overdueMinutes}m';
-      }
-      bg = AppColors.error.withValues(alpha: 0.1);
-      fg = AppColors.error;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: fg),
-      ),
-    );
-  }
 
   Widget _buildStandardContent({
     required BuildContext context,
     required WidgetRef ref,
     required Color headingColor,
-    required Color bodyColor,
-    required Color subtleIconColor,
     required AsyncValue<Map<String, dynamic>?> customerAsync,
-    Widget? slaChip,
     required bool canClaimTicket,
     required bool isMyTicket,
     required bool hasRibbon,
@@ -379,41 +337,34 @@ class TicketCardWithAmc extends ConsumerWidget {
     final companyName = customer?.companyName.trim().isEmpty == true
         ? null
         : customer?.companyName;
+    final referenceDateRaw = ticket.updatedAt ?? ticket.createdAt;
     final referenceDate =
-        (ticket.updatedAt ?? ticket.createdAt)?.toLocal();
+        referenceDateRaw == null ? null : _toLocalTime(referenceDateRaw);
     final createdTimestamp = referenceDate != null
         ? DateFormat('dd MMM yyyy • hh:mm a').format(referenceDate)
         : null;
     final createdRelative =
-        referenceDate != null ? timeago.format(referenceDate) : null;
-    final assignmentChip = _buildAssignmentChip(ref, isMyTicket);
+        referenceDate != null
+            ? timeago.format(
+                referenceDate,
+                clock: _toLocalTime(DateTime.now().toUtc()),
+              )
+            : null;
     final actionButton = _buildActionButtons(
       context: context,
       ref: ref,
       canClaimTicket: canClaimTicket,
       isMyTicket: isMyTicket,
+      
     );
     final isUnassigned =
         ticket.assignedTo == null || ticket.assignedTo!.isEmpty;
 
-    final metadataChips = <Widget>[
-      _buildStatusBadge(ticket.status),
-      if (assignmentChip != null) assignmentChip,
-      if (assignmentChip == null && isUnassigned)
-        _buildInfoPill(
-          icon: LucideIcons.userPlus,
-          label: 'Unassigned',
-          iconColor: AppColors.slate500,
-          backgroundColor: AppColors.slate100,
-          textColor: AppColors.slate700,
-        ),
-      if (slaChip != null) slaChip,
-      if (customer != null &&
-          (customer.isAmcActive || highlightPriorityCustomer))
-        _AmcBadge(isActive: customer.isAmcActive),
-      if (_shouldShowBillingChip(ticket.status))
-        _buildAmountChip(ticket.billAmount),
-    ];
+    final statusPill = _buildMinimalStatusPill(
+      status: ticket.status,
+      isUnassigned: isUnassigned,
+      isMyTicket: isMyTicket,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -508,19 +459,10 @@ class TicketCardWithAmc extends ConsumerWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 12),
-            _buildStatusBadge(ticket.status),
           ],
         ),
-        const SizedBox(height: 10),
-        _buildStatusProgressBar(ticket.status),
         const SizedBox(height: 8),
-        if (metadataChips.isNotEmpty)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: metadataChips,
-          ),
+        if (statusPill != null) statusPill,
         if (actionButton != null) ...[
           const SizedBox(height: 12),
           actionButton,
@@ -533,10 +475,7 @@ class TicketCardWithAmc extends ConsumerWidget {
     required BuildContext context,
     required WidgetRef ref,
     required Color headingColor,
-    required Color bodyColor,
-    required Color subtleIconColor,
     required AsyncValue<Map<String, dynamic>?> customerAsync,
-    Widget? slaChip,
     required bool canClaimTicket,
     required bool isMyTicket,
     required bool hasRibbon,
@@ -548,38 +487,33 @@ class TicketCardWithAmc extends ConsumerWidget {
     final companyName = customer?.companyName.trim().isEmpty == true
         ? null
         : customer?.companyName;
+    final referenceDateRaw = ticket.updatedAt ?? ticket.createdAt;
     final referenceDate =
-        (ticket.updatedAt ?? ticket.createdAt)?.toLocal();
+        referenceDateRaw == null ? null : _toLocalTime(referenceDateRaw);
     final createdTimestamp = referenceDate != null
         ? DateFormat('dd MMM yyyy • hh:mm a').format(referenceDate)
         : null;
     final createdRelative =
-        referenceDate != null ? timeago.format(referenceDate) : null;
-    final assignmentChip = _buildAssignmentChip(ref, isMyTicket);
+        referenceDate != null
+            ? timeago.format(
+                referenceDate,
+                clock: _toLocalTime(DateTime.now().toUtc()),
+              )
+            : null;
     final actionButton = _buildActionButtons(
       context: context,
       ref: ref,
       canClaimTicket: canClaimTicket,
       isMyTicket: isMyTicket,
+      
     );
-    final metadataChips = <Widget>[
-      _buildStatusBadge(ticket.status),
-      if (assignmentChip != null) assignmentChip,
-      if (assignmentChip == null)
-        _buildInfoPill(
-          icon: LucideIcons.userPlus,
-          label: 'Unassigned',
-          iconColor: AppColors.slate500,
-          backgroundColor: AppColors.slate100,
-          textColor: AppColors.slate700,
-        ),
-      if (slaChip != null) slaChip,
-      if (customer != null &&
-          (customer.isAmcActive || highlightPriorityCustomer))
-        _AmcBadge(isActive: customer.isAmcActive),
-      if (_shouldShowBillingChip(ticket.status))
-        _buildAmountChip(ticket.billAmount),
-    ];
+    final isUnassigned =
+        ticket.assignedTo == null || ticket.assignedTo!.isEmpty;
+    final statusPill = _buildMinimalStatusPill(
+      status: ticket.status,
+      isUnassigned: isUnassigned,
+      isMyTicket: isMyTicket,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -666,14 +600,7 @@ class TicketCardWithAmc extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 8),
-        _buildStatusProgressBar(ticket.status),
-        const SizedBox(height: 8),
-        if (metadataChips.isNotEmpty)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: metadataChips,
-          ),
+        if (statusPill != null) statusPill,
         if (actionButton != null) ...[
           const SizedBox(height: 12),
           actionButton,
@@ -682,47 +609,6 @@ class TicketCardWithAmc extends ConsumerWidget {
     );
   }
 
-  Widget? _buildAssignmentChip(WidgetRef ref, bool isMyTicket) {
-    final assignedTo = ticket.assignedTo;
-    if (assignedTo == null || assignedTo.isEmpty) return null;
-
-    final assignedAgentAsync = ref.watch(
-      ticketAssignedAgentProvider(assignedTo),
-    );
-
-    return assignedAgentAsync.when(
-      data: (agentData) {
-        final displayName = (agentData?['full_name'] ??
-                agentData?['username'] ??
-                'Assigned')
-            .toString();
-        final label = isMyTicket
-            ? 'Assigned to you'
-            : 'Assigned to $displayName';
-        return _buildInfoPill(
-          icon: LucideIcons.userCheck,
-          label: label,
-          iconColor: AppColors.success,
-          textColor: AppColors.success,
-          backgroundColor: AppColors.success.withValues(alpha: 0.12),
-        );
-      },
-      loading: () => _buildInfoPill(
-        icon: LucideIcons.userCheck,
-        label: 'Assigning…',
-        iconColor: AppColors.slate500,
-        textColor: AppColors.slate600,
-        backgroundColor: AppColors.slate100,
-      ),
-      error: (_, __) => _buildInfoPill(
-        icon: LucideIcons.userCheck,
-        label: 'Claimed',
-        iconColor: AppColors.slate500,
-        textColor: AppColors.slate600,
-        backgroundColor: AppColors.slate100,
-      ),
-    );
-  }
 
   Widget _buildInfoPill({
     required IconData icon,
@@ -755,6 +641,56 @@ class TicketCardWithAmc extends ConsumerWidget {
     );
   }
 
+  Widget? _buildMinimalStatusPill({
+    required String status,
+    required bool isUnassigned,
+    required bool isMyTicket,
+  }) {
+    final normalized = status.trim().toLowerCase();
+
+    if (_stageBilledStatuses.contains(normalized)) {
+      return _buildInfoPill(
+        icon: LucideIcons.receipt,
+        label: 'Billed',
+        iconColor: AppColors.success,
+        textColor: AppColors.success,
+        backgroundColor: AppColors.success.withValues(alpha: 0.12),
+      );
+    }
+
+    if (normalized == 'billraised') {
+      return _buildInfoPill(
+        icon: LucideIcons.fileText,
+        label: 'Bill Raised',
+        iconColor: AppColors.warning,
+        textColor: AppColors.warning,
+        backgroundColor: AppColors.warning.withValues(alpha: 0.12),
+      );
+    }
+
+    if (normalized == 'resolved') {
+      return _buildInfoPill(
+        icon: LucideIcons.checkCircle,
+        label: 'Resolved',
+        iconColor: AppColors.success,
+        textColor: AppColors.success,
+        backgroundColor: AppColors.success.withValues(alpha: 0.12),
+      );
+    }
+
+    if (!isUnassigned) {
+      return _buildInfoPill(
+        icon: LucideIcons.userCheck,
+        label: isMyTicket ? 'Claimed by you' : 'Claimed',
+        iconColor: AppColors.info,
+        textColor: AppColors.info,
+        backgroundColor: AppColors.info.withValues(alpha: 0.12),
+      );
+    }
+
+    return null;
+  }
+
   Widget? _buildActionButtons({
     required BuildContext context,
     required WidgetRef ref,
@@ -775,105 +711,21 @@ class TicketCardWithAmc extends ConsumerWidget {
             icon: const Icon(LucideIcons.userCheck, size: 16),
             label: const Text('Claim ticket'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.slate900,
-              side: BorderSide(color: AppColors.border),
+              foregroundColor: AppColors.info,
+              side: BorderSide(color: AppColors.info.withValues(alpha: 0.6)),
             ),
             onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              final currentUser = ref.read(authProvider);
-              if (currentUser == null) return;
-
-              final success = await ref
-                  .read(ticketAssignerProvider.notifier)
-                  .assignTicket(ticket.ticketId, currentUser.id);
-
-              if (!context.mounted) return;
-              if (success) {
-                ref.invalidate(ticketsStreamProvider);
-                String message = 'Ticket claimed successfully';
-                Color snackColor = AppColors.success;
-
-                if (_autoStartStatuses.contains(ticket.status)) {
-                  final statusError = await ref
-                      .read(ticketStatusUpdaterProvider.notifier)
-                      .updateStatus(ticket.ticketId, 'In Progress');
-
-                  if (!context.mounted) return;
-
-                  if (statusError != null) {
-                    message =
-                        'Ticket claimed but failed to start work: $statusError';
-                    snackColor = AppColors.error;
-                  } else {
-                    message = 'Ticket claimed and moved to In Progress';
-                  }
-                }
-
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(message),
-                    backgroundColor: snackColor,
-                  ),
-                );
-
-                context.push('/ticket/${ticket.ticketId}');
-              } else {
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Failed to claim ticket'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              }
+              context.go(
+                '/ticket/${ticket.ticketId}',
+                extra: {'autoClaim': true},
+              );
             },
           ),
         ),
       );
     }
 
-    if (isMyTicket && !isUnassigned) {
-      if (ticket.status == 'In Progress') {
-        buttons.add(
-          SizedBox(
-            width: double.infinity,
-            height: 40,
-            child: FilledButton.icon(
-              icon: const Icon(LucideIcons.pauseCircle, size: 16),
-              label: const Text('Put on Hold'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.warning,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () => _updateTicketStatus(
-                context,
-                ref,
-                'On Hold',
-              ),
-            ),
-          ),
-        );
-      } else if (ticket.status == 'On Hold') {
-        buttons.add(
-          SizedBox(
-            width: double.infinity,
-            height: 40,
-            child: FilledButton.icon(
-              icon: const Icon(LucideIcons.playCircle, size: 16),
-              label: const Text('Resume Work'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.success,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () => _updateTicketStatus(
-                context,
-                ref,
-                'In Progress',
-              ),
-            ),
-          ),
-        );
-      }
-    }
+    // Simplified flow: no hold/resume buttons.
 
     if (buttons.isEmpty) {
       if (ticket.status == 'BillRaised') {
@@ -918,42 +770,6 @@ class TicketCardWithAmc extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatusBadge(String status) {
-    StatusVariant variant;
-    if (status.contains('New') || status.contains('Open')) {
-      variant = StatusVariant.info;
-    } else if (status.contains('Progress')) {
-      variant = StatusVariant.warning;
-    } else if (status.contains('Resolved')) {
-      variant = StatusVariant.success;
-    } else {
-      variant = StatusVariant.neutral;
-    }
-
-    return StatusBadge(label: status, variant: variant);
-  }
-
-  Widget _buildAmountChip(num? amount) {
-    final label = amount == null
-        ? 'Amount pending'
-        : 'Amount: ₹${amount.toStringAsFixed(0)}';
-    return _buildInfoPill(
-      icon: LucideIcons.indianRupee,
-      label: label,
-      iconColor: AppColors.slate500,
-      textColor: AppColors.slate700,
-      backgroundColor: AppColors.slate100,
-    );
-  }
-
-  bool _shouldShowBillingChip(String status) {
-    return [
-      'BillRaised',
-      'BillProcessed',
-      'Resolved',
-      'Closed',
-    ].contains(status);
-  }
 
   Widget _buildPriorityIcon(String? priority) {
     Color color;
@@ -983,71 +799,6 @@ class TicketCardWithAmc extends ConsumerWidget {
     }
 
     return Icon(icon, size: 14, color: color);
-  }
-
-  Widget _buildStatusProgressBar(String status) {
-    const stageLabels = ['Start', 'Pending', 'Resolved', 'Billed'];
-    final activeIndex = _statusStageIndex(status);
-    final totalSegments = stageLabels.length * 2 - 1;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: List.generate(totalSegments, (index) {
-            if (index.isOdd) {
-              final connectorIndex = index ~/ 2;
-              final isFilled = activeIndex > connectorIndex;
-              return Expanded(
-                child: Container(
-                  height: 2,
-                  color: isFilled ? AppColors.success : AppColors.slate200,
-                ),
-              );
-            }
-
-            final nodeIndex = index ~/ 2;
-            final isReached = activeIndex >= nodeIndex;
-            return Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: isReached ? AppColors.success : Colors.white,
-                border: Border.all(
-                  color: isReached ? AppColors.success : AppColors.slate200,
-                  width: 2,
-                ),
-                shape: BoxShape.circle,
-              ),
-            );
-          }),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: stageLabels
-              .map(
-                (label) => Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.slate500,
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-      ],
-    );
-  }
-
-  int _statusStageIndex(String status) {
-    final normalized = status.trim().toLowerCase();
-    if (_stageBilledStatuses.contains(normalized)) return 3;
-    if (_stageResolvedStatuses.contains(normalized)) return 2;
-    if (_stagePendingStatuses.contains(normalized)) return 1;
-    return 0;
   }
 
 }

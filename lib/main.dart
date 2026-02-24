@@ -23,10 +23,10 @@ import 'features/customers/presentation/pages/customer_detail_page.dart';
 import 'features/customers/presentation/pages/add_customer_page.dart';
 import 'features/customers/presentation/pages/edit_customer_page.dart';
 import 'features/customers/presentation/widgets/customer_history_sheet.dart';
-import 'features/dashboard/presentation/pages/accountant_dashboard_page.dart';
 import 'features/dashboard/presentation/pages/support_dashboard_page.dart';
 import 'features/tickets/presentation/pages/past_tickets_page.dart';
 import 'features/sales/presentation/pages/sales_opportunity_page.dart';
+import 'features/sales/presentation/pages/sales_dashboard_page.dart';
 import 'features/dashboard/presentation/pages/reports_page.dart';
 import 'features/dashboard/presentation/pages/revenue_page.dart';
 import 'features/dashboard/presentation/pages/app_settings_page.dart';
@@ -39,9 +39,9 @@ void main() async {
 
   // Initialize Supabase
   await Supabase.initialize(
-    url: 'https://payqnnptpyuxibjepmjn.supabase.co',
+    url: 'https://ybmxpmsiihtasyjwxtol.supabase.co',
     anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBheXFubnB0cHl1eGliamVwbWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5MTgyNTQsImV4cCI6MjA3OTQ5NDI1NH0.CzlV_ygyckVFc2F2fB8hBSpqeuOq3wHBFSpQdkjPphQ',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlibXhwbXNpaWh0YXN5and4dG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MDExNTEsImV4cCI6MjA4NzQ3NzE1MX0.dOoJWDf4j_etF0NTq4uuaVG47e0y_pDe-AdgDRhWI68',
   );
 
   final container = ProviderContainer();
@@ -73,6 +73,7 @@ class TallyCareApp extends ConsumerWidget {
     );
 
     final router = GoRouter(
+      debugLogDiagnostics: false,
       initialLocation: authState == null ? '/login' : '/',
       redirect: (context, state) {
         final isLoggedIn = authState != null;
@@ -85,6 +86,7 @@ class TallyCareApp extends ConsumerWidget {
         final isSupportHead = authState?.isSupportHead ?? false;
         final isAccountant = authState?.isAccountant ?? false;
         final isSupport = authState?.isSupport ?? false;
+        final isSales = authState?.isSales ?? false;
 
         // Redirect to login if not authenticated
         if (!isLoggedIn &&
@@ -99,6 +101,7 @@ class TallyCareApp extends ConsumerWidget {
           if (isAdmin) return '/admin';
           if (isAccountant) return '/accountant';
           if (isSupport) return '/support';
+          if (isSales) return '/sales';
           if (isSupportHead) return '/';
           return '/';
         }
@@ -110,6 +113,9 @@ class TallyCareApp extends ConsumerWidget {
         }
         if (isSupport && state.matchedLocation == '/') {
           return '/support';
+        }
+        if (isSales && state.matchedLocation == '/') {
+          return '/sales';
         }
 
         final location = state.matchedLocation;
@@ -207,11 +213,15 @@ class TallyCareApp extends ConsumerWidget {
         ),
         GoRoute(
           path: '/accountant',
-          builder: (context, state) => const AccountantDashboardPage(),
+          builder: (context, state) => const BillsPage(),
         ),
         GoRoute(
           path: '/support',
           builder: (context, state) => const SupportDashboardPage(),
+        ),
+        GoRoute(
+          path: '/sales',
+          builder: (context, state) => const SalesDashboardPage(),
         ),
         GoRoute(
           path: '/tickets',
@@ -267,7 +277,16 @@ class TallyCareApp extends ConsumerWidget {
           path: '/ticket/:id',
           builder: (context, state) {
             final id = state.pathParameters['id']!;
-            return TicketDetailPage(ticketId: id);
+            final extra = state.extra;
+            bool autoClaim = false;
+            if (extra is Map) {
+              final v = extra['autoClaim'];
+              if (v is bool) autoClaim = v;
+            }
+            return TicketDetailPage(
+              ticketId: id,
+              autoClaim: autoClaim,
+            );
           },
         ),
         GoRoute(

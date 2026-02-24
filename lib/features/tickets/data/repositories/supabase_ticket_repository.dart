@@ -426,4 +426,24 @@ class SupabaseTicketRepository implements TicketRepository {
       return Left(ServerFailure(e.toString()));
     }
   }
+
+  @override
+  Future<Either<Failure, Unit>> deleteTickets(List<String> ticketIds) async {
+    if (ticketIds.isEmpty) {
+      return const Right(unit);
+    }
+
+    try {
+      await _supabase.from('tickets').delete().inFilter('id', ticketIds);
+      return const Right(unit);
+    } catch (e, stackTrace) {
+      appLogger.error(
+        'Failed to delete tickets',
+        error: e,
+        stackTrace: stackTrace,
+        context: {'ticketIds': ticketIds},
+      );
+      return Left(ServerFailure(e.toString()));
+    }
+  }
 }

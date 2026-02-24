@@ -40,7 +40,7 @@ class FilterChipGroup extends StatelessWidget {
   }
 }
 
-class _FilterChip extends StatelessWidget {
+class _FilterChip extends StatefulWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
@@ -52,27 +52,54 @@ class _FilterChip extends StatelessWidget {
   });
 
   @override
+  State<_FilterChip> createState() => _FilterChipState();
+}
+
+class _FilterChipState extends State<_FilterChip> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.primary : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isSelected ? AppColors.primary : AppColors.border,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: widget.isSelected
+                  ? AppColors.primary
+                  : (_isHovered ? AppColors.slate50 : Colors.white),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: widget.isSelected
+                    ? AppColors.primary
+                    : (_isHovered ? AppColors.borderHover : AppColors.border),
+                width: widget.isSelected ? 1.5 : 1,
+              ),
+              boxShadow: widget.isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.25),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
             ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              color: isSelected ? Colors.white : AppColors.slate600,
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: widget.isSelected ? Colors.white : AppColors.slate700,
+                letterSpacing: -0.1,
+              ),
             ),
           ),
         ),
@@ -81,7 +108,7 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-/// Tab-style filter group (matches the Dashboard filter tabs)
+/// Enterprise tab-style filter group
 class FilterTabGroup extends StatelessWidget {
   final List<String> options;
   final String selected;
@@ -99,8 +126,8 @@ class FilterTabGroup extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.slate50,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.border),
       ),
       child: Row(
@@ -118,7 +145,7 @@ class FilterTabGroup extends StatelessWidget {
   }
 }
 
-class _FilterTab extends StatelessWidget {
+class _FilterTab extends StatefulWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
@@ -130,22 +157,40 @@ class _FilterTab extends StatelessWidget {
   });
 
   @override
+  State<_FilterTab> createState() => _FilterTabState();
+}
+
+class _FilterTabState extends State<_FilterTab> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.slate100 : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-            color: isSelected ? AppColors.slate900 : AppColors.slate600,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(
+            color: widget.isSelected
+                ? AppColors.primarySurface
+                : (_isHovered ? AppColors.slate50 : Colors.transparent),
+            borderRadius: BorderRadius.circular(8),
+            border: widget.isSelected
+                ? Border.all(color: AppColors.primary.withValues(alpha: 0.3))
+                : null,
+          ),
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+              color: widget.isSelected ? AppColors.primary : AppColors.slate600,
+              letterSpacing: -0.1,
+            ),
           ),
         ),
       ),
