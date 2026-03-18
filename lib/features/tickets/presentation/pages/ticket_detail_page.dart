@@ -16,7 +16,6 @@ import '../providers/ticket_provider.dart';
 import '../widgets/comments_section.dart';
 import '../widgets/ticket_remarks_section.dart';
 import '../widgets/resolve_bill_dialog.dart';
-import 'edit_ticket_page.dart';
 
 class TicketDetailPage extends ConsumerStatefulWidget {
   final String ticketId;

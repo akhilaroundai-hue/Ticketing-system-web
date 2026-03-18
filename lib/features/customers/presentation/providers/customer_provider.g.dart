@@ -120,7 +120,7 @@ final class AmcStatsProvider
   }
 }
 
-String _$amcStatsHash() => r'af64f6c0e9e1568864a81113e71bbae138896679';
+String _$amcStatsHash() => r'5e9bd64c3faf409c09af53d9697624c7a0a1beff';
 
 @ProviderFor(customersList)
 const customersListProvider = CustomersListProvider._();
@@ -159,4 +159,4 @@ final class CustomersListProvider
   }
 }
 
-String _$customersListHash() => r'5ce8a3e51745e039fe7b949620cc17a6700787eb';
+String _$customersListHash() => r'805efc0d5a86dddd831cc22f12cb04e304bac57b';

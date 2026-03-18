@@ -8,7 +8,6 @@ import '../providers/ticket_provider.dart';
 import '../../../customers/presentation/providers/customer_provider.dart';
 import '../../../customers/domain/entities/customer.dart';
 import '../../../tickets/domain/entities/ticket.dart';
-import '../../../../core/design_system/components/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../dashboard/presentation/widgets/create_ticket_dialog.dart';
 

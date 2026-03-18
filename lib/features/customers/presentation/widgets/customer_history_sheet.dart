@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/design_system/design_system.dart';
-import '../../../../core/design_system/theme/app_colors.dart';
 import '../../domain/entities/customer.dart';
 import '../../../tickets/domain/entities/ticket.dart';
 import '../../../tickets/presentation/providers/ticket_provider.dart';

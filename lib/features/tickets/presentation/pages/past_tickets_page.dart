@@ -5,8 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/design_system/design_system.dart';
-import '../../../../core/design_system/components/list_tile_card.dart';
-import '../../../../core/design_system/layout/main_layout.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/ticket_provider.dart';
 import '../../../dashboard/presentation/widgets/ticket_card_with_amc.dart';

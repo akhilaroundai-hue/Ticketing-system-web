@@ -115,7 +115,7 @@ class SupportDashboardPage extends ConsumerWidget {
               ),
             ];
 
-            List<Ticket> _filterTickets(bool isAmc) {
+            List<Ticket> filterTickets(bool isAmc) {
               return unclaimedTickets.where((ticket) {
                 final customer = customersById[ticket.customerId];
                 final amcActive = customer?.isAmcActive ?? false;
@@ -123,8 +123,8 @@ class SupportDashboardPage extends ConsumerWidget {
               }).toList();
             }
 
-            final normalTickets = _filterTickets(false);
-            final amcTickets = _filterTickets(true);
+            final normalTickets = filterTickets(false);
+            final amcTickets = filterTickets(true);
             final forceClaimButton = currentUser?.isSupportHead == true;
             final isCustomersLoading = customersAsync.isLoading;
             final unclaimedSection = Column(

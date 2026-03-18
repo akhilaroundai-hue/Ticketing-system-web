@@ -80,19 +80,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         ),
         child: Stack(
           children: [
-            // Subtle pattern overlay
+            // Subtle pattern overlay (offline-safe custom painter)
             Positioned.fill(
               child: Opacity(
-                opacity: 0.03,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    image: DecorationImage(
-                      image: NetworkImage(
-                        'https://www.transparenttextures.com/patterns/cubes.png',
-                      ),
-                      repeat: ImageRepeat.repeat,
-                    ),
-                  ),
+                opacity: 0.06,
+                child: CustomPaint(
+                  painter: _LoginPatternPainter(),
                 ),
               ),
             ),
@@ -512,4 +505,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       ],
     );
   }
+}
+
+class _LoginPatternPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.4)
+      ..strokeWidth = 0.8;
+
+    const double gap = 24;
+
+    for (double x = 0; x < size.width; x += gap) {
+      for (double y = 0; y < size.height; y += gap) {
+        canvas.drawCircle(Offset(x, y), 1.2, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -720,7 +720,7 @@ final class TicketAssignerProvider
   }
 }
 
-String _$ticketAssignerHash() => r'f6bc9f1dd97a66674b95d3897871bdec2a9e1a73';
+String _$ticketAssignerHash() => r'5f2d92f2145cb727ebc2417898002e5b0a2d3e9d';
 
 abstract class _$TicketAssigner extends $Notifier<bool> {
   bool build();

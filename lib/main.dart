@@ -33,6 +33,9 @@ import 'features/dashboard/presentation/pages/app_settings_page.dart';
 import 'features/productivity/presentation/pages/notifications_page.dart';
 import 'features/productivity/presentation/pages/deals_page.dart';
 import 'features/dashboard/presentation/providers/app_settings_provider.dart';
+import 'features/sales/presentation/pages/proposal_generator_page.dart';
+import 'features/chat/presentation/pages/global_chat_page.dart';
+import 'features/sales/presentation/pages/leads_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -283,10 +286,7 @@ class TallyCareApp extends ConsumerWidget {
               final v = extra['autoClaim'];
               if (v is bool) autoClaim = v;
             }
-            return TicketDetailPage(
-              ticketId: id,
-              autoClaim: autoClaim,
-            );
+            return TicketDetailPage(ticketId: id, autoClaim: autoClaim);
           },
         ),
         GoRoute(
@@ -352,6 +352,18 @@ class TallyCareApp extends ConsumerWidget {
           builder: (context, state) => const SalesOpportunityPage(),
         ),
         GoRoute(path: '/deals', builder: (context, state) => const DealsPage()),
+        GoRoute(
+          path: '/proposal-generator',
+          builder: (context, state) => const ProposalGeneratorPage(),
+        ),
+        GoRoute(
+          path: '/leads',
+          builder: (context, state) => const LeadsPage(),
+        ),
+        GoRoute(
+          path: '/chat',
+          builder: (context, state) => const GlobalChatPage(),
+        ),
       ],
     );
 

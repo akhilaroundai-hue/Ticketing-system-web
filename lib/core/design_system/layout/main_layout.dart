@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../../features/auth/presentation/providers/auth_provider.dart';
 import '../theme/app_colors.dart';
 import '../../../features/tickets/presentation/providers/ticket_provider.dart';
@@ -9,6 +10,7 @@ import '../../../features/customers/presentation/providers/customer_provider.dar
 import '../../../features/dashboard/presentation/providers/app_settings_provider.dart';
 import '../../network/connectivity_provider.dart';
 import '../../../features/productivity/presentation/widgets/notification_bell.dart';
+import '../../../features/chat/presentation/providers/chat_provider.dart';
 
 class MainLayout extends StatelessWidget {
   final Widget child;
@@ -96,26 +98,31 @@ class _Sidebar extends ConsumerWidget {
         currentUser?.isSupport == true || currentUser?.isSupportHead == true;
     final showBillsAsDashboard = currentUser?.isAccountant == true;
 
-    final canViewAmcReminder = !simplifyNav &&
+    final canViewAmcReminder =
+        !simplifyNav &&
         (currentUser?.isSupport == true ||
             currentUser?.isSupportHead == true ||
             currentUser?.isAgent == true);
-    final canViewPastTickets = !simplifyNav &&
+    final canViewPastTickets =
+        !simplifyNav &&
         (currentUser?.isSupport == true ||
             currentUser?.isSupportHead == true ||
             currentUser?.isAgent == true);
-    final canViewBills = !simplifyNav ||
+    final canViewBills =
+        !simplifyNav ||
         currentUser?.isAdmin == true ||
         currentUser?.isAccountant == true;
     final canViewSalesOpportunity =
         currentUser?.isSupportHead == true && !simplifyNav;
-    final canViewReports = enableReports &&
+    final canViewReports =
+        enableReports &&
         !simplifyNav &&
         canSeeScreen('reports') &&
         (currentUser?.isAdmin == true ||
             currentUser?.isAccountant == true ||
             currentUser?.isSupportHead == true);
-    final canViewDeals = enableDeals &&
+    final canViewDeals =
+        enableDeals &&
         !simplifyNav &&
         canSeeScreen('deals') &&
         (currentUser?.isAdmin == true ||
@@ -128,10 +135,7 @@ class _Sidebar extends ConsumerWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            AppColors.primaryDark,
-            AppColors.slate900,
-          ],
+          colors: [AppColors.primaryDark, AppColors.slate900],
         ),
         boxShadow: [
           BoxShadow(
@@ -160,10 +164,7 @@ class _Sidebar extends ConsumerWidget {
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        AppColors.primaryLight,
-                        AppColors.primary,
-                      ],
+                      colors: [AppColors.primaryLight, AppColors.primary],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -283,17 +284,18 @@ class _Sidebar extends ConsumerWidget {
                     label: showBillsAsDashboard
                         ? 'Bills'
                         : (isSales
-                            ? 'Dashboard'
-                            : (showClaimTicketsLabel
-                                ? 'Claim Tickets'
-                                : 'Dashboard')),
+                              ? 'Dashboard'
+                              : (showClaimTicketsLabel
+                                    ? 'Claim Tickets'
+                                    : 'Dashboard')),
                     icon: showBillsAsDashboard
                         ? LucideIcons.receipt
                         : LucideIcons.layoutDashboard,
                     path: showBillsAsDashboard
                         ? '/accountant'
                         : (isSales ? '/sales' : '/'),
-                    isActive: currentPath == '/' ||
+                    isActive:
+                        currentPath == '/' ||
                         currentPath == '/admin' ||
                         currentPath == '/support' ||
                         currentPath == '/accountant' ||
@@ -304,14 +306,16 @@ class _Sidebar extends ConsumerWidget {
                       label: isSales ? 'My Tickets' : 'Tickets',
                       icon: LucideIcons.ticket,
                       path: '/tickets',
-                      isActive: currentPath.startsWith('/tickets') ||
+                      isActive:
+                          currentPath.startsWith('/tickets') ||
                           currentPath.startsWith('/ticket'),
                     ),
                   _NavItem(
                     label: 'Customers',
                     icon: LucideIcons.users,
                     path: '/customers',
-                    isActive: currentPath.startsWith('/customers') ||
+                    isActive:
+                        currentPath.startsWith('/customers') ||
                         currentPath.startsWith('/customer'),
                   ),
                   if (canViewAmcReminder)
@@ -372,6 +376,30 @@ class _Sidebar extends ConsumerWidget {
                       path: '/deals',
                       isActive: currentPath.startsWith('/deals'),
                     ),
+                  if (currentUser?.isSales == true ||
+                      currentUser?.isAccountant == true ||
+                      currentUser?.isAdmin == true)
+                    _NavItem(
+                      label: 'Leads',
+                      icon: LucideIcons.target,
+                      path: '/leads',
+                      isActive: currentPath.startsWith('/leads'),
+                    ),
+                  _NavItem(
+                    label: 'Proposals',
+                    icon: LucideIcons.fileText,
+                    path: '/proposal-generator',
+                    isActive: currentPath.startsWith('/proposal-generator'),
+                  ),
+                  _NavItem(
+                    label: 'Team Chat',
+                    icon: LucideIcons.messageSquare,
+                    path: '/chat',
+                    isActive: currentPath.startsWith('/chat'),
+                    badgeCount: currentPath.startsWith('/chat')
+                        ? 0
+                        : ref.watch(chatUnreadCountProvider),
+                  ),
                   if (currentUser?.isAdmin == true)
                     _NavItem(
                       label: 'Settings',
@@ -615,12 +643,14 @@ class _NavItem extends StatefulWidget {
   final IconData icon;
   final String path;
   final bool isActive;
+  final int badgeCount;
 
   const _NavItem({
     required this.label,
     required this.icon,
     required this.path,
     required this.isActive,
+    this.badgeCount = 0,
   });
 
   @override
@@ -635,7 +665,7 @@ class _NavItemState extends State<_NavItem> {
     final inactiveColor = Colors.white.withValues(alpha: 0.6);
     final hoverColor = Colors.white.withValues(alpha: 0.08);
     final activeColor = AppColors.primaryLight;
-    
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -683,14 +713,46 @@ class _NavItemState extends State<_NavItem> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      widget.label,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: widget.isActive ? FontWeight.w600 : FontWeight.w500,
-                        color: widget.isActive ? Colors.white : inactiveColor,
-                        letterSpacing: -0.2,
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          widget.label,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: widget.isActive
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            color: widget.isActive
+                                ? Colors.white
+                                : inactiveColor,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        if (widget.badgeCount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.error,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(minWidth: 18),
+                            child: Text(
+                              widget.badgeCount > 9
+                                  ? '9+'
+                                  : widget.badgeCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   if (widget.isActive)
@@ -735,8 +797,8 @@ class _BottomNav extends ConsumerWidget {
         currentUser?.isSupport == true || currentUser?.isSupportHead == true;
     final renameDashboard = simplifyNav;
     final canSeeRevenue = isAdmin || isAccountant;
-    final canSeeReports = (!simplifyNav) &&
-        (isAdmin || isSupportHead || isAccountant);
+    final canSeeReports =
+        (!simplifyNav) && (isAdmin || isSupportHead || isAccountant);
     final showReportsDestination = enableReports && canSeeReports;
 
     // Unified bottom navigation structure
@@ -780,6 +842,55 @@ class _BottomNav extends ConsumerWidget {
       ),
     );
     navRoutes.add('/customers');
+
+    // Proposals
+    destinations.add(
+      const NavigationDestination(
+        icon: Icon(LucideIcons.fileText),
+        selectedIcon: Icon(LucideIcons.fileText, color: AppColors.primary),
+        label: 'Proposals',
+      ),
+    );
+    navRoutes.add('/proposal-generator');
+
+    // Chat
+    final rawChatUnread = ref.watch(chatUnreadCountProvider);
+    final chatUnread = currentPath.startsWith('/chat') ? 0 : rawChatUnread;
+    destinations.add(
+      NavigationDestination(
+        icon: chatUnread > 0
+            ? Badge(
+                label: Text(chatUnread > 9 ? '9+' : chatUnread.toString()),
+                child: const Icon(LucideIcons.messageSquare),
+              )
+            : const Icon(LucideIcons.messageSquare),
+        selectedIcon: chatUnread > 0
+            ? Badge(
+                label: Text(chatUnread > 9 ? '9+' : chatUnread.toString()),
+                child: const Icon(
+                  LucideIcons.messageSquare,
+                  color: AppColors.primary,
+                ),
+              )
+            : const Icon(LucideIcons.messageSquare, color: AppColors.primary),
+        label: 'Chat',
+      ),
+    );
+    navRoutes.add('/chat');
+
+    // Leads - for sales, accountant & admin
+    if (currentUser?.isSales == true ||
+        currentUser?.isAccountant == true ||
+        currentUser?.isAdmin == true) {
+      destinations.add(
+        const NavigationDestination(
+          icon: Icon(LucideIcons.target),
+          selectedIcon: Icon(LucideIcons.target, color: AppColors.primary),
+          label: 'Leads',
+        ),
+      );
+      navRoutes.add('/leads');
+    }
 
     // Revenue - only for admin/accountant
     if (canSeeRevenue) {
@@ -827,67 +938,58 @@ class _BottomNav extends ConsumerWidget {
         selectedIndex: _getSelectedIndex(currentPath, navRoutes, isAccountant),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         height: 64,
-        onDestinationSelected: (index) => _handleNavigation(
-          context,
-          index,
-          navRoutes,
-          isAccountant: isAccountant,
-        ),
+        onDestinationSelected: (index) =>
+            _handleNavigation(context, index, navRoutes),
         destinations: destinations,
       ),
     );
   }
 
-  void _handleNavigation(
-    BuildContext context,
-    int index,
-    List<String> navRoutes, {
-    bool isAccountant = false,
-  }) {
-    final target = navRoutes[index];
-    if (target == '/profile') {
-      context.push(target);
-    } else if (target == '/') {
-      context.go(isAccountant ? '/accountant' : '/');
-    } else {
-      context.go(target);
-    }
-  }
-
   int _getSelectedIndex(
-    String path,
-    List<String> navRoutes,
+    String current,
+    List<String> routes,
     bool isAccountant,
   ) {
-    for (var i = 0; i < navRoutes.length; i++) {
-      if (_matchesRoute(path, navRoutes[i], isAccountant)) {
-        return i;
+    // Exact matches first
+    final exactIndex = routes.indexOf(current);
+    if (exactIndex != -1) return exactIndex;
+
+    // Special cases
+    if (current.startsWith('/ticket')) {
+      final ticketIndex = routes.indexOf('/tickets');
+      if (ticketIndex != -1) return ticketIndex;
+    }
+    if (current.startsWith('/customer')) {
+      final customerIndex = routes.indexOf('/customers');
+      if (customerIndex != -1) return customerIndex;
+    }
+    // Admin, Accountant, Support dashboards map to '/'
+    if (current == '/admin' ||
+        current == '/support' ||
+        (isAccountant && current == '/accountant') ||
+        current == '/sales') {
+      return 0; // Home is always 0
+    }
+
+    // Fallback: prefix matching
+    // Sort routes by length desc to match longest prefix first (e.g. /users vs /)
+    final sortedIndices = List.generate(routes.length, (i) => i)
+      ..sort((a, b) => routes[b].length.compareTo(routes[a].length));
+
+    for (final index in sortedIndices) {
+      final route = routes[index];
+      if (route == '/') continue; // Skip root for prefix matching
+      if (current.startsWith(route)) {
+        return index;
       }
     }
-    return 0;
+
+    return 0; // Default to home
   }
 
-  bool _matchesRoute(String path, String target, bool isAccountant) {
-    switch (target) {
-      case '/':
-        return path == '/' ||
-            path == '/admin' ||
-            path == '/support' ||
-            path == '/moderator' ||
-            path == '/accountant';
-      case '/tickets':
-        if (isAccountant) return false;
-        return path.startsWith('/tickets') || path.startsWith('/ticket');
-      case '/customers':
-        return path.startsWith('/customers') || path.startsWith('/customer');
-      case '/revenue':
-        return path.startsWith('/revenue');
-      case '/reports':
-        return path.startsWith('/reports');
-      case '/profile':
-        return path.startsWith('/profile');
-      default:
-        return false;
+  void _handleNavigation(BuildContext context, int index, List<String> routes) {
+    if (index >= 0 && index < routes.length) {
+      context.go(routes[index]);
     }
   }
 }
@@ -897,28 +999,26 @@ class _OfflineBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isOffline = ref.watch(isOfflineProvider);
+    final connectivityAsync = ref.watch(connectivityStatusProvider);
 
-    if (!isOffline) {
-      return const SizedBox.shrink();
-    }
+    return connectivityAsync.when(
+      data: (status) {
+        final isOffline = status == ConnectivityResult.none;
 
-    return Container(
-      width: double.infinity,
-      color: AppColors.warning.withValues(alpha: 0.12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: const Row(
-        children: [
-          Icon(LucideIcons.wifiOff, size: 16, color: AppColors.warning),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'You are offline. Some data may be outdated and changes might fail.',
-              style: TextStyle(fontSize: 12, color: AppColors.slate700),
-            ),
+        if (!isOffline) return const SizedBox.shrink();
+        return Container(
+          width: double.infinity,
+          color: AppColors.error,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: const Text(
+            'You are offline. Some features may be unavailable.',
+            style: TextStyle(color: Colors.white, fontSize: 12),
+            textAlign: TextAlign.center,
           ),
-        ],
-      ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }
@@ -928,18 +1028,30 @@ class _UserProfile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider);
+    final currentUser = ref.watch(authProvider);
+
     return InkWell(
-      onTap: () => context.push('/profile'),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
+      onTap: () => context.go('/profile'),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        ),
         child: Row(
           children: [
-            const CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.white10,
-              child: Icon(Icons.person, size: 16, color: Colors.white70),
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: AppColors.primary,
+              child: Text(
+                currentUser?.fullName.substring(0, 1).toUpperCase() ?? 'U',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -947,24 +1059,28 @@ class _UserProfile extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    user?.fullName ?? 'User',
+                    currentUser?.fullName ?? 'User',
                     style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
                       color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    user?.role ?? 'Role',
+                    currentUser?.role ?? 'Role',
                     style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.white.withValues(alpha: 0.5),
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 11,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
+            ),
+            Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: Colors.white.withValues(alpha: 0.4),
             ),
           ],
         ),
