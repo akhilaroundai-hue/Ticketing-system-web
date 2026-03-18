@@ -1719,7 +1719,7 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
       ),
       clipBehavior: Clip.antiAlias,
       child: Image.network(
-        'assets/assets/company_logo.png', // Attempt direct web path
+        'company_logo.png', // Served from web/ folder root (like favicon.png)
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => Image.asset(
           'assets/company_logo.png', // Fallback to asset manifest
