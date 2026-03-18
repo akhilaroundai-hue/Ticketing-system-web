@@ -682,12 +682,13 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
     GlobalKey key,
     double pixelRatio,
   ) async {
-    final boundary = key.currentContext?.findRenderObject()
-        as RenderRepaintBoundary?;
+    final boundary =
+        key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary == null) return null;
     final ui.Image image = await boundary.toImage(pixelRatio: pixelRatio);
-    final ByteData? byteData =
-        await image.toByteData(format: ui.ImageByteFormat.png);
+    final ByteData? byteData = await image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
     return byteData?.buffer.asUint8List();
   }
 
@@ -749,7 +750,9 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
     return pdf.save();
   }
 
-  Future<Uint8List> _generatePdfBytesInternal({bool forceRefresh = false}) async {
+  Future<Uint8List> _generatePdfBytesInternal({
+    bool forceRefresh = false,
+  }) async {
     final fingerprint = _currentPdfFingerprint();
     if (!forceRefresh &&
         _cachedPdfBytes != null &&
@@ -800,7 +803,9 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
       final sanitizedClient = clientNameCtrl.text.trim().replaceAll(' ', '_');
       final path = 'proposals/${sanitizedClient}_$timestamp.pdf';
 
-      await client.storage.from(_proposalBucket).uploadBinary(
+      await client.storage
+          .from(_proposalBucket)
+          .uploadBinary(
             path,
             pdfBytes,
             fileOptions: const FileOptions(upsert: true),
@@ -828,9 +833,9 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
       await Printing.sharePdf(bytes: pdfData, filename: filename);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('PDF Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isGeneratingPdf = false);
@@ -983,8 +988,9 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    onPressed:
-                        _isSharingWhatsApp ? null : () => _shareOnWhatsApp(),
+                    onPressed: _isSharingWhatsApp
+                        ? null
+                        : () => _shareOnWhatsApp(),
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton.icon(
@@ -1028,7 +1034,10 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final isNarrow = constraints.maxWidth < 1000;
-                      final clampedPage = _currentPreviewPage.clamp(0, pages.length - 1);
+                      final clampedPage = _currentPreviewPage.clamp(
+                        0,
+                        pages.length - 1,
+                      );
 
                       // All pages rendered at once for instant PDF capture
                       final allPagesHidden = ClipRect(
@@ -1677,10 +1686,7 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
     return Container(
       width: _pageWidth,
       height: _pageHeight,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 32,
-        vertical: 28,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
       decoration: const BoxDecoration(color: Colors.white),
       child: child,
     );
@@ -1707,6 +1713,7 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
       width: 64,
       height: 64,
       decoration: BoxDecoration(
+        color: cGray100, // Added diagnostic background
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: cGray200),
       ),

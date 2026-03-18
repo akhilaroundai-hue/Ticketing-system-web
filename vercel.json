@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/((?!assets/|canvaskit/|manifest\\.json|.*\\.js|.*\\.wasm|.*\\.png|.*\\.jpg|.*\\.ico|.*\\.json).*)",
+      "source": "/((?!assets/|canvaskit/|icons/|manifest\\.json|favicon\\.png|.*\\.js|.*\\.wasm|.*\\.png|.*\\.jpg|.*\\.ico|.*\\.json|.*\\.bin|.*\\.ttf|.*\\.woff2).*)",
       "destination": "/index.html"
     }
   ]
