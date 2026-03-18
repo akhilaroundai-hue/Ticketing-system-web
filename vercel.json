@@ -1,5 +1,8 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    {
+      "source": "/((?!assets/|canvaskit/|manifest\\.json|.*\\.js|.*\\.wasm|.*\\.png|.*\\.jpg|.*\\.ico|.*\\.json).*)",
+      "destination": "/index.html"
+    }
   ]
 }
