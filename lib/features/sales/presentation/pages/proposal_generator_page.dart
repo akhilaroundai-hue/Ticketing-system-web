@@ -1713,12 +1713,27 @@ class _ProposalGeneratorPageState extends ConsumerState<ProposalGeneratorPage> {
       width: 64,
       height: 64,
       decoration: BoxDecoration(
-        color: cGray100, // Added diagnostic background
+        color: Colors
+            .red, // BRIGHT RED FOR DIAGNOSIS - If this doesn't show, you are on old code!
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cGray200),
+        border: Border.all(
+          color: Colors.blue,
+          width: 2,
+        ), // Blue border for visibility
       ),
       clipBehavior: Clip.antiAlias,
-      child: Image.asset('assets/company_logo.png', fit: BoxFit.cover),
+      child: Image.asset(
+        'assets/company_logo.png',
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback if asset fails to load
+          return Container(
+            color: Colors.red,
+            alignment: Alignment.center,
+            child: const Icon(Icons.error, color: Colors.white, size: 20),
+          );
+        },
+      ),
     );
   }
 
