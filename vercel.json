@@ -1,7 +1,23 @@
 {
   "rewrites": [
     {
-      "source": "/((?!assets/|canvaskit/|icons/|manifest\\.json|favicon\\.png|.*\\.js|.*\\.wasm|.*\\.png|.*\\.jpg|.*\\.ico|.*\\.json|.*\\.bin|.*\\.ttf|.*\\.woff2).*)",
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
+      "source": "/canvaskit/(.*)",
+      "destination": "/canvaskit/$1"
+    },
+    {
+      "source": "/manifest.json",
+      "destination": "/manifest.json"
+    },
+    {
+      "source": "/index.html",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
